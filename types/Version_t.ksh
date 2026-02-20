@@ -111,6 +111,45 @@ typeset -T Version_t=(
         fi
     }
 
+    # Predicate: is this version less than $1?
+    # Fast-path for major/minor/patch; subshell only for pre-release tiebreaker
+    function lt {
+        typeset -n _other=$1
+        if (( _.major != _other.major )); then
+            (( _.major < _other.major )); return
+        fi
+        if (( _.minor != _other.minor )); then
+            (( _.minor < _other.minor )); return
+        fi
+        if (( _.patch != _other.patch )); then
+            (( _.patch < _other.patch )); return
+        fi
+        # Same major.minor.patch — need pre-release comparison
+        [[ $(_.cmp "$1") == -1 ]]
+    }
+
+    # Predicate: is this version greater than $1?
+    function gt {
+        typeset -n _other=$1
+        if (( _.major != _other.major )); then
+            (( _.major > _other.major )); return
+        fi
+        if (( _.minor != _other.minor )); then
+            (( _.minor > _other.minor )); return
+        fi
+        if (( _.patch != _other.patch )); then
+            (( _.patch > _other.patch )); return
+        fi
+        [[ $(_.cmp "$1") == 1 ]]
+    }
+
+    # Predicate: is this version equal to $1? (no subshell needed)
+    function eq {
+        typeset -n _other=$1
+        (( _.major == _other.major && _.minor == _other.minor && _.patch == _other.patch )) &&
+        [[ ${_.pre} == "${_other.pre}" ]]
+    }
+
     function get {
         if [[ -n ${_.pre} ]]; then
             .sh.value="${_.major}.${_.minor}.${_.patch}-${_.pre}"

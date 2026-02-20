@@ -24,20 +24,9 @@ function sequence {
     typeset _seq_ref=$1
     shift
 
-    # Detect whether -- delimiters are present
-    typeset _seq_has_delim=false _seq_a
-    for _seq_a; do
-        [[ $_seq_a == '--' ]] && { _seq_has_delim=true; break; }
-    done
-
-    if [[ $_seq_has_delim == false ]]; then
-        # Simple mode: each arg is a function name
-        typeset _seq_fn
-        for _seq_fn; do
-            [[ ${_seq_r.status} == ok ]] || return 0
-            chain "$_seq_ref" "$_seq_fn"
-        done
-    else
+    # Fast delimiter detection via glob — avoids a pre-scan loop
+    case " $* " in
+    *' -- '*)
         # Delimited mode: split on -- and forward args per step
         typeset -a _seq_step=()
         while (( $# > 0 )); do
@@ -58,7 +47,16 @@ function sequence {
             [[ ${_seq_r.status} == ok ]] || return 0
             chain "$_seq_ref" "${_seq_step[0]}" "${_seq_step[@]:1}"
         fi
-    fi
+        ;;
+    *)
+        # Simple mode: each arg is a function name
+        typeset _seq_fn
+        for _seq_fn; do
+            [[ ${_seq_r.status} == ok ]] || return 0
+            chain "$_seq_ref" "$_seq_fn"
+        done
+        ;;
+    esac
 
     return 0
 }

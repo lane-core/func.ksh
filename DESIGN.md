@@ -59,6 +59,35 @@ match r force_t1 force_t2       # dispatch between two suspended strategies
 ```
 
 
+### Observation and retry
+
+`tap`, `tap_ok`, and `tap_err` let you observe a result mid-pipeline without
+affecting it. The observer runs, state is saved and restored, the pipeline
+continues. `tap_ok` and `tap_err` are gated variants that only fire on the
+matching status — the common case is logging errors without touching the
+success path, or vice versa.
+
+`retry` resets the result to `ok` with the original input value before each
+attempt, giving the function a clean slate every time. This makes it safe
+to retry operations that set `.err` as their failure mode.
+
+### Avoiding subshells
+
+Several `Result_t` methods exist in pairs — one that prints (for use in
+`$(...)` command substitution) and one that writes into a variable via
+nameref:
+
+| Subshell form | Nameref form | Difference |
+|--------------|--------------|------------|
+| `val=$(r.value_or "default")` | `r.value_into var "default"` | Writes to `var` directly, no fork |
+| `val=$(r.expect "ctx")` | `r.expect_into var "ctx"` | Writes to `var`, returns 1 on err |
+
+The nameref forms avoid forking a subshell for each extraction. In tight
+loops or pipelines that extract values repeatedly, this is the difference
+between ~50,000 ops/sec and ~5,000 ops/sec. Use the subshell forms for
+one-shot extractions where clarity matters more than speed.
+
+
 ## Polarity
 
 System L distinguishes positive types (values, data at rest) from negative
@@ -113,6 +142,54 @@ Linear logic restricts weakening (discarding unused values) and contraction
 shell variables — they can be ignored or read multiple times without
 ceremony. These structural rules are automatically satisfied by the shell's
 value semantics.
+
+
+## Patterns
+
+### safe_fetch dual-mode
+
+`safe_fetch` handles both HTTP headers-only (`-I`) and full body fetches
+depending on what the caller needs. It validates URL schemes, captures curl
+exit codes into Result_t error codes, and produces structured output. The
+error codes map directly to curl's exit codes, making `case_code` a natural
+fit for dispatch:
+
+```ksh
+safe_fetch r "$url"
+case_code r 6:handle_dns_failure 22:handle_http_error default:handle_unknown
+```
+
+### Parallel gather
+
+`gather` runs N independent operations, each against its own fresh Result_t,
+and accumulates results into one. It doesn't fork — it's sequential in the
+current shell. True parallelism would require subshells, and namerefs can't
+cross fork boundaries (see "ksh93u+m Quirks" below).
+
+For I/O-bound work where you'd want real parallelism, the pattern is to use
+background processes for the external commands and gather the results:
+
+```ksh
+# Fan out external commands
+curl "$url1" > /tmp/r1 &
+curl "$url2" > /tmp/r2 &
+wait
+
+# Gather results in the current shell
+gather r items parse_response
+```
+
+### Nameref limitation across forks
+
+`typeset -n` namerefs resolve in the current shell's scope. A subshell
+(`$(...)`, `( ... )`, or a pipeline component) gets a copy of the variable,
+not a reference to the original. Modifications via nameref in a subshell
+are silently lost.
+
+This is why every combinator modifies the Result_t directly rather than
+returning a new one — there's no way to return a compound variable from a
+subshell. It also means `gather` can't parallelize with `&` and still
+accumulate into a shared Result_t.
 
 
 ## Memoization

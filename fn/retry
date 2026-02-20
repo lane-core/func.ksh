@@ -1,0 +1,42 @@
+# retry — repeat a fallible operation up to N times
+#
+# Calls fn with the result variable. If the result is err after the
+# call, retries up to max attempts, optionally sleeping between them.
+# Stops on the first success. On exhaustion, the last error is preserved.
+#
+# Unlike chain (which skips on prior error), retry always resets to ok
+# with the original value before each attempt — the function gets a
+# clean slate every time.
+#
+# Usage:
+#   retry r 3 safe_fetch "https://example.com/api"
+#   retry r 5 2 flaky_operation    # 5 attempts, 2s delay between
+
+function retry {
+    typeset -n _re_r=$1
+    typeset _re_ref=$1
+    typeset -i _re_max=$2
+    shift 2
+
+    # Optional delay: if next arg is numeric and there's still a fn after it
+    typeset -i _re_delay=0
+    if [[ $1 == +([0-9]) ]] && (( $# > 1 )); then
+        _re_delay=$1; shift
+    fi
+    typeset _re_fn=$1; shift
+
+    typeset _re_input=${_re_r.value}
+    typeset -i _re_i
+    for (( _re_i = 0; _re_i < _re_max; _re_i++ )); do
+        _re_r.ok "$_re_input"
+        "$_re_fn" "$_re_ref" "$@"
+        typeset -i _re_ret=$?
+        if (( _re_ret != 0 )) && [[ ${_re_r.status} == ok ]]; then
+            _re_r.err "retry: $_re_fn exited $_re_ret without setting result" $_re_ret
+        fi
+        [[ ${_re_r.status} == ok ]] && return 0
+        (( _re_i + 1 < _re_max && _re_delay > 0 )) && sleep "$_re_delay"
+    done
+
+    return 0
+}

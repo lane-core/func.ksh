@@ -1,0 +1,13 @@
+# tap_err — observe a Result_t only when status is err
+#
+# Like tap, but skips the observer entirely if the result is ok.
+# The observer cannot modify the result (state is saved and restored).
+#
+# Usage:
+#   tap_err r log_error      # only logs if r is err
+
+function tap_err {
+    typeset -n _ter_r=$1
+    [[ ${_ter_r.status} == err ]] || return 0
+    tap "$@"
+}

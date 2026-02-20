@@ -1,0 +1,13 @@
+# tap_ok — observe a Result_t only when status is ok
+#
+# Like tap, but skips the observer entirely if the result is err.
+# The observer cannot modify the result (state is saved and restored).
+#
+# Usage:
+#   tap_ok r log_value       # only logs if r is ok
+
+function tap_ok {
+    typeset -n _tok_r=$1
+    [[ ${_tok_r.status} == ok ]] || return 0
+    tap "$@"
+}

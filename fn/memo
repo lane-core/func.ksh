@@ -8,6 +8,7 @@
 # The cache key includes the function name, current result state, and
 # any extra arguments — so different inputs always get different entries.
 # All key fields are printf '%q'-encoded to prevent delimiter collisions.
+# Key computation uses printf -v (no subshell) for cache-hit performance.
 #
 # Usage:
 #   chain r memo expensive_fn
@@ -20,12 +21,19 @@ function memo {
     typeset _me_ref=$1 _me_fn=$2
     shift 2
 
-    # Build cache key — encode every field to prevent delimiter collision
+    # Build cache key — printf -v avoids subshell on every lookup
+    typeset _me_sep=$'\x1f' _me_qfn _me_qval _me_qextra
+    printf -v _me_qfn '%q' "$_me_fn"
+    printf -v _me_qextra '%q' "$*"
     typeset _me_key
     if [[ ${_me_r.status} == ok ]]; then
-        _me_key=$(printf 'ok\x1f%q\x1f%q\x1f%q' "$_me_fn" "${_me_r.value}" "$*")
+        printf -v _me_qval '%q' "${_me_r.value}"
+        _me_key="ok${_me_sep}${_me_qfn}${_me_sep}${_me_qval}${_me_sep}${_me_qextra}"
     else
-        _me_key=$(printf 'err\x1f%q\x1f%q\x1f%q\x1f%q' "$_me_fn" "${_me_r.error}" "${_me_r.code}" "$*")
+        typeset _me_qerr _me_qcode
+        printf -v _me_qerr '%q' "${_me_r.error}"
+        printf -v _me_qcode '%q' "${_me_r.code}"
+        _me_key="err${_me_sep}${_me_qfn}${_me_sep}${_me_qerr}${_me_sep}${_me_qcode}${_me_sep}${_me_qextra}"
     fi
 
     # Cache hit: restore result from encoded entry
@@ -46,12 +54,14 @@ function memo {
         _me_r.err "memo: $_me_fn exited $_me_ret without setting result" $_me_ret
     fi
 
-    # Store result in cache
+    # Store result in cache (printf -v avoids subshell here too)
+    typeset _me_encoded
     if [[ ${_me_r.status} == ok ]]; then
-        _FUNC_KSH_MEMO[$_me_key]="ok $(printf '%q' "${_me_r.value}")"
+        printf -v _me_encoded 'ok %q' "${_me_r.value}"
     else
-        _FUNC_KSH_MEMO[$_me_key]="err $(printf '%q' "${_me_r.error}") ${_me_r.code}"
+        printf -v _me_encoded 'err %q %q' "${_me_r.error}" "${_me_r.code}"
     fi
+    _FUNC_KSH_MEMO[$_me_key]=$_me_encoded
 
     return 0
 }

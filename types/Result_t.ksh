@@ -75,6 +75,29 @@ typeset -T Result_t=(
         fi
     }
 
+    # Write .value (or default) into a variable — no subshell needed
+    # Usage: r.value_into myvar "fallback"
+    function value_into {
+        typeset -n _vi_out=$1
+        if [[ ${_.status} == ok ]]; then
+            _vi_out=${_.value}
+        else
+            _vi_out=${2:-}
+        fi
+    }
+
+    # Write .value into a variable, or report error and return 1
+    # Usage: r.expect_into myvar "context" || exit 1
+    function expect_into {
+        typeset -n _ei_out=$1
+        if [[ ${_.status} == ok ]]; then
+            _ei_out=${_.value}
+        else
+            print -u2 "expect failed: $2: ${_.error}"
+            return 1
+        fi
+    }
+
     # Reset to initial state (useful for reusing accumulators)
     function reset {
         _.status=ok
