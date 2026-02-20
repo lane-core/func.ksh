@@ -1,0 +1,26 @@
+# memo_clear — reset the memo cache
+#
+# With no arguments, clears the entire cache.
+# With function name(s), clears only entries for those functions.
+#
+# Usage:
+#   memo_clear                    # clear all
+#   memo_clear expensive_fn       # clear entries for one function
+#   memo_clear fn1 fn2            # clear entries for multiple functions
+
+function memo_clear {
+    typeset _mc_key
+    if (( $# == 0 )); then
+        for _mc_key in "${!_FUNC_KSH_MEMO[@]}"; do
+            unset "_FUNC_KSH_MEMO[$_mc_key]"
+        done
+    else
+        typeset _mc_fn
+        for _mc_fn in "$@"; do
+            for _mc_key in "${!_FUNC_KSH_MEMO[@]}"; do
+                [[ $_mc_key == ok:${_mc_fn}:* || $_mc_key == err:${_mc_fn}:* ]] &&
+                    unset "_FUNC_KSH_MEMO[$_mc_key]"
+            done
+        done
+    fi
+}

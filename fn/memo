@@ -1,0 +1,56 @@
+# memo — memoize a function's results by input value
+#
+# Wraps a chain-compatible function with result caching. On first call
+# with a given input, executes the function and caches the outcome.
+# On subsequent calls with the same input, restores from cache without
+# re-executing. Uses printf '%q' encoding for safe cache round-tripping.
+#
+# The cache key includes the function name, current result state, and
+# any extra arguments — so different inputs always get different entries.
+#
+# Usage:
+#   chain r memo expensive_fn
+#   chain r memo expensive_fn extra_arg
+#
+# Clear cache with memo_clear (all entries) or memo_clear fn_name.
+
+function memo {
+    typeset -n _me_r=$1
+    typeset _me_ref=$1 _me_fn=$2
+    shift 2
+
+    # Build cache key from function name, current state, and extra args
+    typeset _me_key
+    if [[ ${_me_r.status} == ok ]]; then
+        _me_key="ok:${_me_fn}:${_me_r.value}:$*"
+    else
+        _me_key="err:${_me_fn}:${_me_r.error}:${_me_r.code}:$*"
+    fi
+
+    # Cache hit: restore result from encoded entry
+    if [[ -n ${_FUNC_KSH_MEMO[$_me_key]+_} ]]; then
+        eval set -- ${_FUNC_KSH_MEMO[$_me_key]}
+        if [[ $1 == ok ]]; then
+            _me_r.ok "$2"
+        else
+            _me_r.err "$2" "$3"
+        fi
+        return 0
+    fi
+
+    # Cache miss: execute function
+    "$_me_fn" "$_me_ref" "$@"
+    typeset -i _me_ret=$?
+    if (( _me_ret != 0 )) && [[ ${_me_r.status} == ok ]]; then
+        _me_r.err "memo: $_me_fn exited $_me_ret without setting result" $_me_ret
+    fi
+
+    # Store result in cache
+    if [[ ${_me_r.status} == ok ]]; then
+        _FUNC_KSH_MEMO[$_me_key]="ok $(printf '%q' "${_me_r.value}")"
+    else
+        _FUNC_KSH_MEMO[$_me_key]="err $(printf '%q' "${_me_r.error}") ${_me_r.code}"
+    fi
+
+    return 0
+}

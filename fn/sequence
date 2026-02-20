@@ -31,15 +31,11 @@ function sequence {
     done
 
     if [[ $_seq_has_delim == false ]]; then
-        # Simple mode: each arg is a function name (no extra args)
+        # Simple mode: each arg is a function name
         typeset _seq_fn
         for _seq_fn; do
             [[ ${_seq_r.status} == ok ]] || return 0
-            "$_seq_fn" "$_seq_ref"
-            typeset -i _seq_ret=$?
-            if (( _seq_ret != 0 )) && [[ ${_seq_r.status} == ok ]]; then
-                _seq_r.err "sequence: $_seq_fn exited $_seq_ret without setting result" $_seq_ret
-            fi
+            chain "$_seq_ref" "$_seq_fn"
         done
     else
         # Delimited mode: split on -- and forward args per step
@@ -47,14 +43,9 @@ function sequence {
         while (( $# > 0 )); do
             if [[ $1 == '--' ]]; then
                 shift
-                # Execute accumulated step
                 if (( ${#_seq_step[@]} > 0 )); then
                     [[ ${_seq_r.status} == ok ]] || return 0
-                    "${_seq_step[0]}" "$_seq_ref" "${_seq_step[@]:1}"
-                    typeset -i _seq_ret=$?
-                    if (( _seq_ret != 0 )) && [[ ${_seq_r.status} == ok ]]; then
-                        _seq_r.err "sequence: ${_seq_step[0]} exited $_seq_ret without setting result" $_seq_ret
-                    fi
+                    chain "$_seq_ref" "${_seq_step[0]}" "${_seq_step[@]:1}"
                 fi
                 _seq_step=()
             else
@@ -65,11 +56,7 @@ function sequence {
         # Execute final step (after last -- or if no trailing --)
         if (( ${#_seq_step[@]} > 0 )); then
             [[ ${_seq_r.status} == ok ]] || return 0
-            "${_seq_step[0]}" "$_seq_ref" "${_seq_step[@]:1}"
-            typeset -i _seq_ret=$?
-            if (( _seq_ret != 0 )) && [[ ${_seq_r.status} == ok ]]; then
-                _seq_r.err "sequence: ${_seq_step[0]} exited $_seq_ret without setting result" $_seq_ret
-            fi
+            chain "$_seq_ref" "${_seq_step[0]}" "${_seq_step[@]:1}"
         fi
     fi
 

@@ -3,6 +3,9 @@
 # If the result is err, call the recovery function which may fix it.
 # If the result is ok, pass through unchanged.
 #
+# Implemented as the err-arm special case of match (the cut rule):
+#   or_else r fn  ≡  match r - fn
+#
 # The recovery function MUST call _r.ok on success. If it fails, it
 # SHOULD call _r.err with a new message. If it exits non-zero without
 # touching the result, the original upstream error is preserved — this
@@ -21,14 +24,5 @@
 #   }
 
 function or_else {
-    typeset -n _oe_r=$1
-    typeset _oe_ref=$1 _oe_fn=$2
-    shift 2
-
-    # Only invoke fallback on error
-    [[ ${_oe_r.status} == err ]] || return 0
-
-    "$_oe_fn" "$_oe_ref" "$@"
-
-    return 0
+    match "$1" - "$2" "${@:3}"
 }

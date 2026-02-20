@@ -38,6 +38,9 @@ function _func_ksh_cleanup {
 }
 trap '_func_ksh_cleanup' EXIT
 
+# Global state for memo combinator (associative array cache)
+typeset -A _FUNC_KSH_MEMO
+
 # Source type definitions (order matters — no deps first)
 for _f in "${_FUNC_KSH_ROOT}"/types/*.ksh; do
     [[ -f $_f ]] && . "$_f"

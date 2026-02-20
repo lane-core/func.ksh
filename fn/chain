@@ -4,6 +4,9 @@
 # name as its first argument. If the result is err, skip (short-circuit).
 # This is monadic bind: (>>=) for Result_t.
 #
+# Implemented as the ok-arm special case of match (the cut rule):
+#   chain r fn  ≡  match r fn -
+#
 # Usage:
 #   Result_t r
 #   r.ok "/some/path"
@@ -21,19 +24,5 @@
 #   }
 
 function chain {
-    typeset -n _chain_r=$1
-    typeset _chain_ref=$1 _chain_fn=$2
-    shift 2
-
-    # Short-circuit: prior error means skip
-    [[ ${_chain_r.status} == ok ]] || return 0
-
-    # Call the operation: result var first, then any extra args
-    "$_chain_fn" "$_chain_ref" "$@"
-    typeset -i _chain_ret=$?
-    if (( _chain_ret != 0 )) && [[ ${_chain_r.status} == ok ]]; then
-        _chain_r.err "chain: $_chain_fn exited $_chain_ret without setting result" $_chain_ret
-    fi
-
-    return 0
+    match "$1" "$2" - "${@:3}"
 }
