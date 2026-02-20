@@ -1,0 +1,77 @@
+# sequence — run a list of functions through a Result_t, stopping on first error
+#
+# Like chaining multiple `chain` calls, but takes function names as arguments.
+# Each function receives the result nameref and should read .value / set .ok or .err.
+#
+# Supports per-function extra arguments via -- delimiters:
+#   sequence r fn1 arg1 -- fn2 -- fn3 arg3a arg3b
+# is equivalent to:
+#   chain r fn1 arg1
+#   chain r fn2
+#   chain r fn3 arg3a arg3b
+#
+# Without --, the original syntax still works (each arg is a function name):
+#   sequence r parse validate transform save
+#
+# Usage:
+#   Result_t r
+#   r.ok "$input"
+#   sequence r parse validate transform save
+#   sequence r validate --strict -- transform --format=json -- save
+
+function sequence {
+    typeset -n _seq_r=$1
+    typeset _seq_ref=$1
+    shift
+
+    # Detect whether -- delimiters are present
+    typeset _seq_has_delim=false _seq_a
+    for _seq_a; do
+        [[ $_seq_a == '--' ]] && { _seq_has_delim=true; break; }
+    done
+
+    if [[ $_seq_has_delim == false ]]; then
+        # Simple mode: each arg is a function name (no extra args)
+        typeset _seq_fn
+        for _seq_fn; do
+            [[ ${_seq_r.status} == ok ]] || return 0
+            "$_seq_fn" "$_seq_ref"
+            typeset -i _seq_ret=$?
+            if (( _seq_ret != 0 )) && [[ ${_seq_r.status} == ok ]]; then
+                _seq_r.err "sequence: $_seq_fn exited $_seq_ret without setting result" $_seq_ret
+            fi
+        done
+    else
+        # Delimited mode: split on -- and forward args per step
+        typeset -a _seq_step=()
+        while (( $# > 0 )); do
+            if [[ $1 == '--' ]]; then
+                shift
+                # Execute accumulated step
+                if (( ${#_seq_step[@]} > 0 )); then
+                    [[ ${_seq_r.status} == ok ]] || return 0
+                    "${_seq_step[0]}" "$_seq_ref" "${_seq_step[@]:1}"
+                    typeset -i _seq_ret=$?
+                    if (( _seq_ret != 0 )) && [[ ${_seq_r.status} == ok ]]; then
+                        _seq_r.err "sequence: ${_seq_step[0]} exited $_seq_ret without setting result" $_seq_ret
+                    fi
+                fi
+                _seq_step=()
+            else
+                _seq_step+=("$1")
+                shift
+            fi
+        done
+        # Execute final step (after last -- or if no trailing --)
+        if (( ${#_seq_step[@]} > 0 )); then
+            [[ ${_seq_r.status} == ok ]] || return 0
+            "${_seq_step[0]}" "$_seq_ref" "${_seq_step[@]:1}"
+            typeset -i _seq_ret=$?
+            if (( _seq_ret != 0 )) && [[ ${_seq_r.status} == ok ]]; then
+                _seq_r.err "sequence: ${_seq_step[0]} exited $_seq_ret without setting result" $_seq_ret
+            fi
+        fi
+    fi
+
+    return 0
+}

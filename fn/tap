@@ -1,0 +1,42 @@
+# tap — observe a Result_t without modifying it
+#
+# Calls the function with the result, then restores the original
+# state regardless of what the function did. Useful for logging,
+# debugging, or side effects that shouldn't affect the pipeline.
+#
+# Usage:
+#   function log_debug {
+#       typeset -n _r=$1
+#       print -u2 "DEBUG: status=${_r.status} value=${_r.value}"
+#   }
+#
+#   chain r step_one
+#   tap r log_debug        # logs but doesn't change r
+#   chain r step_two
+#
+# Works on both ok and err results (unlike chain which skips on err).
+
+function tap {
+    typeset -n _tap_r=$1
+    typeset _tap_ref=$1 _tap_fn=$2
+    shift 2
+
+    # Save current state
+    typeset _tap_status=${_tap_r.status}
+    typeset _tap_value=${_tap_r.value}
+    typeset _tap_error=${_tap_r.error}
+    typeset -i _tap_code=${_tap_r.code}
+    typeset _tap_origin=${_tap_r.origin}
+
+    # Call the observer (ignore return value)
+    "$_tap_fn" "$_tap_ref" "$@" || true
+
+    # Restore original state
+    _tap_r.status=$_tap_status
+    _tap_r.value=$_tap_value
+    _tap_r.error=$_tap_error
+    _tap_r.code=$_tap_code
+    _tap_r.origin=$_tap_origin
+
+    return 0
+}

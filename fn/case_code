@@ -1,0 +1,36 @@
+# case_code — dispatch on error code (additive elimination)
+#
+# If the result is ok, pass through unchanged.
+# If err, match .code against code:fn pairs left-to-right.
+# First match wins. Literal 'default' matches any code.
+# Handler '-' acknowledges the code without acting (passthrough).
+#
+# Usage:
+#   case_code r 6:handle_dns 22:handle_http default:handle_other
+#
+# Each handler has the standard signature: fn result_var
+
+function case_code {
+    typeset -n _cc_r=$1
+    typeset _cc_ref=$1
+    shift
+
+    [[ ${_cc_r.status} == err ]] || return 0
+
+    typeset _cc_spec _cc_code _cc_fn
+    for _cc_spec in "$@"; do
+        if [[ $_cc_spec != *:* ]]; then
+            _cc_r.err "case_code: malformed spec '$_cc_spec' (expected code:fn)" 1
+            return 0
+        fi
+        _cc_code=${_cc_spec%%:*}
+        _cc_fn=${_cc_spec#*:}
+        if [[ $_cc_code == default || $_cc_code == "${_cc_r.code}" ]]; then
+            [[ $_cc_fn == - ]] && return 0
+            "$_cc_fn" "$_cc_ref"
+            return 0
+        fi
+    done
+
+    return 0
+}

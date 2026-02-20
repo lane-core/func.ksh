@@ -1,0 +1,46 @@
+# try_cmd — run an external command and capture its result
+#
+# Executes a command, captures stdout into .value on success,
+# or captures stderr into .error on failure.
+#
+# Usage:
+#   Result_t r
+#   try_cmd r ls /some/path
+#   try_cmd r curl -sf "$url"
+#
+# The result variable does not need to be pre-initialized.
+#
+# Stderr is captured via a shared temp file (_FUNC_KSH_ERRTMP),
+# lazy-initialized on first use and reused across calls.
+#
+# Limitations:
+#   - Do not nest try_cmd inside a command passed to try_cmd.
+#   - Not safe for concurrent use (background jobs, coprocesses)
+#     since all calls share the same stderr capture file.
+
+function try_cmd {
+    typeset -n _tc_r=$1
+    shift
+
+    # Lazy-init shared stderr capture file (one mktemp per session)
+    if [[ -z ${_FUNC_KSH_ERRTMP:-} ]]; then
+        _FUNC_KSH_ERRTMP=$(mktemp) || {
+            _tc_r.err "try_cmd: cannot create temp file" 1
+            return 0
+        }
+    fi
+
+    typeset _tc_out _tc_err
+    typeset -i _tc_code
+
+    _tc_out=$("$@" 2>|"$_FUNC_KSH_ERRTMP") && _tc_code=0 || _tc_code=$?
+    _tc_err=$(<"$_FUNC_KSH_ERRTMP")
+
+    if (( _tc_code == 0 )); then
+        _tc_r.ok "$_tc_out"
+    else
+        _tc_r.err "${_tc_err:-command failed: $*}" $_tc_code
+    fi
+
+    return 0
+}

@@ -1,0 +1,29 @@
+# collect — map a fallible function over arguments, accumulating errors
+#
+# The batch counterpart to gather, as sequence is to chain.
+# Calls fn once per argument, each with a fresh Result_t pre-loaded
+# with that argument's value. Errors fold into the accumulator;
+# successes are silent. Does not reset the accumulator — composable
+# with prior gather/collect calls on the same result.
+#
+# Usage:
+#   Result_t acc
+#   collect acc install_pkg pkg1 pkg2 pkg3
+#   if acc.is_err; then
+#       acc.report   # shows all failures
+#   fi
+#
+# For per-item post-processing (where you need access to each
+# operation's individual result), use gather in your own loop instead.
+
+function collect {
+    typeset _co_ref=$1 _co_fn=$2
+    shift 2
+
+    typeset _co_arg
+    for _co_arg; do
+        gather "$_co_ref" "$_co_fn" "$_co_arg"
+    done
+
+    return 0
+}

@@ -1,0 +1,41 @@
+# lift — adapt a stdin→stdout command for use in chain/sequence
+#
+# Wraps a filter-style command (reads stdin, writes stdout) into the
+# chain calling convention (receives result nameref, reads .value,
+# sets .ok/.err). This lets external commands participate in
+# chain/sequence pipelines alongside native nameref functions.
+#
+# The command receives .value on stdin (via pipe) and its stdout
+# is captured back into .value. Same semantics as map_result, but
+# usable with chain/sequence.
+#
+# Note: subject to the same trailing-newline behavior as map_result
+# (print adds one, $() strips them).
+#
+# Usage:
+#   # Standalone:
+#   chain r lift tr '[:upper:]' '[:lower:]'
+#
+#   # In a sequence, mixed with native functions:
+#   sequence r validate lift "tr a-z A-Z" transform save
+#   # ↑ doesn't work directly because sequence passes function names,
+#   #   not commands with args. Use partial application instead:
+#
+#   function to_upper { lift "$1" tr '[:upper:]' '[:lower:]'; }
+#   sequence r validate to_upper transform save
+
+function lift {
+    typeset -n _li_r=$1
+    shift
+
+    [[ ${_li_r.status} == ok ]] || return 0
+
+    typeset _li_out
+    _li_out=$(print -r -- "${_li_r.value}" | "$@") || {
+        _li_r.err "lift: command failed: $*" $?
+        return 0
+    }
+    _li_r.value=$_li_out
+
+    return 0
+}

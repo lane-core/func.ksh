@@ -1,0 +1,33 @@
+# guard — conditionally fail a Result_t based on a predicate
+#
+# If the result is ok, runs the predicate command with .value as
+# its last argument. If the predicate returns non-zero, sets the
+# result to err with the given message.
+#
+# Syntax: guard RESULT "message on failure" COMMAND [ARGS...]
+#
+# The message comes before the command because the command is variadic
+# (it consumes all remaining arguments). Read it as:
+#   "guard that [command] holds, or fail with [message]"
+#
+# Usage:
+#   Result_t r
+#   r.ok "/etc/passwd"
+#   guard r "path must be writable" test -w
+#   guard r "must not be empty"     test -n
+#   guard r "must be valid json"    jq -e . >/dev/null
+
+function guard {
+    typeset -n _g_r=$1
+    shift
+    typeset _g_msg=$1; shift
+
+    [[ ${_g_r.status} == ok ]] || return 0
+
+    "$@" "${_g_r.value}" || {
+        typeset -i _g_code=$?
+        _g_r.err "$_g_msg" $_g_code
+    }
+
+    return 0
+}

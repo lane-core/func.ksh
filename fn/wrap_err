@@ -1,0 +1,25 @@
+# wrap_err — annotate a Result_t error with context
+#
+# If the result is err, prepends context to the error message.
+# If the result is ok, passes through unchanged.
+#
+# Usage:
+#   chain r deploy_binary
+#   wrap_err r "deploying ${service}"
+#   # error becomes: "deploying myapp: permission denied: /usr/local/bin"
+#
+#   # Works in sequence-like patterns:
+#   chain r fetch_artifact
+#   chain r verify_checksum
+#   wrap_err r "installing ${pkg}"
+
+function wrap_err {
+    typeset -n _we_r=$1
+    typeset _we_ctx=$2
+
+    [[ ${_we_r.status} == err ]] || return 0
+
+    _we_r.error="${_we_ctx}: ${_we_r.error}"
+
+    return 0
+}

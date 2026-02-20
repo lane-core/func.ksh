@@ -1,0 +1,39 @@
+# chain — sequence a fallible operation through a Result_t
+#
+# If the result is ok, call the function with the result's variable
+# name as its first argument. If the result is err, skip (short-circuit).
+# This is monadic bind: (>>=) for Result_t.
+#
+# Usage:
+#   Result_t r
+#   r.ok "/some/path"
+#   chain r validate_path
+#   chain r fetch_contents extra_arg
+#   # r now holds the outcome of the entire chain
+#
+# The called function receives the result variable name as $1,
+# followed by any extra arguments passed to chain:
+#   function my_op {
+#       typeset -n _r=$1; shift
+#       # ... use ${_r.value} as input, $@ for extra args ...
+#       _r.ok "new value"    # on success
+#       _r.err "message" 2   # on failure
+#   }
+
+function chain {
+    typeset -n _chain_r=$1
+    typeset _chain_ref=$1 _chain_fn=$2
+    shift 2
+
+    # Short-circuit: prior error means skip
+    [[ ${_chain_r.status} == ok ]] || return 0
+
+    # Call the operation: result var first, then any extra args
+    "$_chain_fn" "$_chain_ref" "$@"
+    typeset -i _chain_ret=$?
+    if (( _chain_ret != 0 )) && [[ ${_chain_r.status} == ok ]]; then
+        _chain_r.err "chain: $_chain_fn exited $_chain_ret without setting result" $_chain_ret
+    fi
+
+    return 0
+}

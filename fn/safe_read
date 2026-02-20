@@ -1,0 +1,44 @@
+# safe_read — read a file's contents into a Result_t
+#
+# Usage:
+#   safe_read r /path/to/file          # direct: explicit path
+#   r.ok "/path"; chain r safe_read    # chain:  path from .value
+#
+# On success, .value contains the file contents.
+# On failure, .error explains why (not found, not readable, etc.).
+#
+# Note: contents are captured via $(<file) which strips trailing
+# newlines. Content with significant trailing whitespace will not
+# round-trip exactly through safe_write + safe_read.
+
+function safe_read {
+    typeset -n _sr_r=$1
+    typeset _sr_path
+    if (( $# >= 2 )); then
+        _sr_path=$2
+    else
+        _sr_path=${_sr_r.value}
+    fi
+
+    if [[ ! -e $_sr_path ]]; then
+        _sr_r.err "safe_read: no such file: $_sr_path" 1
+        return 0
+    fi
+    if [[ ! -f $_sr_path ]]; then
+        _sr_r.err "safe_read: not a regular file: $_sr_path" 1
+        return 0
+    fi
+    if [[ ! -r $_sr_path ]]; then
+        _sr_r.err "safe_read: permission denied: $_sr_path" 1
+        return 0
+    fi
+
+    typeset _sr_contents
+    _sr_contents=$(<"$_sr_path") || {
+        _sr_r.err "safe_read: read failed: $_sr_path" $?
+        return 0
+    }
+
+    _sr_r.ok "$_sr_contents"
+    return 0
+}

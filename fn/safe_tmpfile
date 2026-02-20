@@ -1,0 +1,30 @@
+# safe_tmpfile — create a temporary file and return its path
+#
+# Usage:
+#   Result_t r
+#   safe_tmpfile r                    # uses system default tmpdir
+#   safe_tmpfile r /specific/dir      # create in specific directory
+#   safe_tmpfile r /dir .suffix       # with suffix
+#
+# On success, .value contains the path to the new temp file.
+# Caller is responsible for cleanup.
+
+function safe_tmpfile {
+    typeset -n _st_r=$1
+    typeset _st_dir=${2:-${TMPDIR:-/tmp}}
+    typeset _st_suffix=${3:-}
+
+    if [[ ! -d $_st_dir ]]; then
+        _st_r.err "safe_tmpfile: directory does not exist: $_st_dir" 1
+        return 0
+    fi
+
+    typeset _st_path
+    _st_path=$(mktemp "${_st_dir}/tmp.XXXXXXXXXX${_st_suffix}") || {
+        _st_r.err "safe_tmpfile: mktemp failed in $_st_dir" $?
+        return 0
+    }
+
+    _st_r.ok "$_st_path"
+    return 0
+}

@@ -1,0 +1,115 @@
+# safe_fetch — download a URL to a file or into a Result_t
+#
+# Usage:
+#   safe_fetch r "$url"                          # direct: URL explicit
+#   safe_fetch -o r "$url" /path/out             # direct: download to file
+#   r.ok "$url"; chain r safe_fetch              # chain:  URL from .value
+#   r.ok "$url"; chain r safe_fetch -o /path     # chain:  URL from .value, save to file
+#
+# Uses curl if available, falls back to wget.
+
+function safe_fetch {
+    typeset _sf_to_file=false
+    # Track where -o appeared to disambiguate direct vs chain mode.
+    # -o before result var → direct (safe_fetch -o r url /path)
+    # -o after result var  → chain  (chain r safe_fetch -o /path)
+    typeset _sf_o_pos=''
+    if [[ ${1:-} == -o ]]; then
+        _sf_to_file=true
+        _sf_o_pos=direct
+        shift
+    fi
+
+    typeset -n _sf_r=$1; shift
+
+    if [[ ${1:-} == -o ]]; then
+        _sf_to_file=true
+        _sf_o_pos=chain
+        shift
+    fi
+
+    typeset _sf_url _sf_out
+    if [[ $_sf_to_file == true ]]; then
+        if (( $# >= 2 )); then
+            # Unambiguous: URL and output path both provided
+            _sf_url=$1 _sf_out=$2
+        elif (( $# == 1 )) && [[ $_sf_o_pos == chain ]]; then
+            # Chain mode: URL from .value, $1 is output path
+            _sf_url=${_sf_r.value} _sf_out=$1
+        elif (( $# == 1 )); then
+            # Direct mode with missing output path
+            _sf_r.err "safe_fetch -o: requires output path" 1
+            return 0
+        else
+            _sf_r.err "safe_fetch -o: requires output path" 1
+            return 0
+        fi
+    else
+        if (( $# >= 1 )); then
+            _sf_url=$1
+        else
+            _sf_url=${_sf_r.value}
+        fi
+        _sf_out=''
+    fi
+
+    # Validate URL (basic scheme check)
+    case $_sf_url in
+        https://*|http://*) ;;
+        *) _sf_r.err "safe_fetch: unsupported URL scheme: $_sf_url" 1
+           return 0 ;;
+    esac
+
+    # Find a download tool (cached after first detection)
+    if [[ -z ${_FUNC_KSH_FETCH_CMD:-} ]]; then
+        if command -v curl >/dev/null 2>&1; then
+            _FUNC_KSH_FETCH_CMD=curl
+        elif command -v wget >/dev/null 2>&1; then
+            _FUNC_KSH_FETCH_CMD=wget
+        else
+            _sf_r.err "safe_fetch: neither curl nor wget found" 1
+            return 0
+        fi
+    fi
+    typeset _sf_cmd=$_FUNC_KSH_FETCH_CMD
+
+    if [[ $_sf_to_file == true ]]; then
+        # Download to file
+        typeset _sf_err
+        typeset -i _sf_code
+        case $_sf_cmd in
+            curl) _sf_err=$(curl -fsSL -o "$_sf_out" "$_sf_url" 2>&1); _sf_code=$? ;;
+            wget) _sf_err=$(wget -q -O "$_sf_out" "$_sf_url" 2>&1); _sf_code=$? ;;
+        esac
+        if (( _sf_code != 0 )); then
+            _sf_r.err "safe_fetch: download failed: ${_sf_err:-$_sf_url}" $_sf_code
+            return 0
+        fi
+        _sf_r.ok "$_sf_out"
+    else
+        # Download to memory
+        # Lazy-init shared stderr capture file (same as try_cmd)
+        if [[ -z ${_FUNC_KSH_ERRTMP:-} ]]; then
+            _FUNC_KSH_ERRTMP=$(mktemp) || {
+                _sf_r.err "safe_fetch: cannot create temp file" 1
+                return 0
+            }
+        fi
+
+        typeset _sf_body
+        case $_sf_cmd in
+            curl) _sf_body=$(curl -fsSL "$_sf_url" 2>|"$_FUNC_KSH_ERRTMP") ;;
+            wget) _sf_body=$(wget -q -O - "$_sf_url" 2>|"$_FUNC_KSH_ERRTMP") ;;
+        esac
+        typeset -i _sf_code=$?
+        typeset _sf_err=$(<"$_FUNC_KSH_ERRTMP")
+
+        if (( _sf_code != 0 )); then
+            _sf_r.err "safe_fetch: download failed: ${_sf_err:-$_sf_url}" $_sf_code
+            return 0
+        fi
+        _sf_r.ok "$_sf_body"
+    fi
+
+    return 0
+}

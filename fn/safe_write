@@ -1,0 +1,89 @@
+# safe_write — atomically write contents to a file
+#
+# Writes to a temporary file in the same directory, then renames.
+# This prevents partial writes from corrupting the target.
+#
+# Usage:
+#   safe_write r /path "contents"               # direct: explicit content
+#   safe_write -a r /path "contents"             # direct: append mode
+#   r.ok "data"; chain r safe_write /path        # chain: content from .value
+#   r.ok "data"; chain r safe_write -a /path     # chain: append from .value
+#
+# Note: content is written via print -r -- which appends a trailing
+# newline. Content with significant trailing whitespace will not
+# round-trip exactly through safe_write + safe_read.
+
+function safe_write {
+    typeset _sw_append=false
+    # -a can appear before result var (direct) or after (chain)
+    if [[ ${1:-} == -a ]]; then
+        _sw_append=true
+        shift
+    fi
+
+    typeset -n _sw_r=$1; shift
+
+    if [[ ${1:-} == -a ]]; then
+        _sw_append=true
+        shift
+    fi
+
+    typeset _sw_path=${1:-} _sw_content
+    if (( $# >= 2 )); then
+        _sw_content=$2
+    else
+        _sw_content=${_sw_r.value}
+    fi
+    typeset _sw_dir=${_sw_path%/*}
+    # bare filename (no /) → %/* is a no-op, normalize to .
+    [[ $_sw_dir == "$_sw_path" ]] && _sw_dir=.
+    # /filename → dir is empty, normalize to /
+    [[ -z $_sw_dir && $_sw_path == /* ]] && _sw_dir=/
+
+    # Validate target directory exists
+    if [[ $_sw_dir != "$_sw_path" && ! -d $_sw_dir ]]; then
+        _sw_r.err "safe_write: directory does not exist: $_sw_dir" 1
+        return 0
+    fi
+
+    if [[ $_sw_append == true ]]; then
+        # Append mode — not atomic but straightforward
+        print -r -- "$_sw_content" >>"$_sw_path" 2>/dev/null || {
+            _sw_r.err "safe_write: append failed: $_sw_path" $?
+            return 0
+        }
+        _sw_r.ok "$_sw_path"
+        return 0
+    fi
+
+    # Atomic write: temp file + rename
+    typeset _sw_tmp
+    _sw_tmp=$(mktemp "${_sw_dir:-.}/tmp.XXXXXXXXXX") || {
+        _sw_r.err "safe_write: cannot create temp file in $_sw_dir" 1
+        return 0
+    }
+
+    # Preserve permissions if target exists (portable: no --reference)
+    if [[ -f $_sw_path ]]; then
+        typeset _sw_mode
+        # GNU stat uses -c '%a', BSD/macOS stat uses -f '%OLp'
+        _sw_mode=$(stat -c '%a' "$_sw_path" 2>/dev/null) ||
+            _sw_mode=$(stat -f '%OLp' "$_sw_path" 2>/dev/null) || true
+        [[ -n ${_sw_mode:-} ]] && chmod "$_sw_mode" "$_sw_tmp" 2>/dev/null || true
+    fi
+
+    print -r -- "$_sw_content" >|"$_sw_tmp" || {
+        rm -f "$_sw_tmp"
+        _sw_r.err "safe_write: write to temp failed" $?
+        return 0
+    }
+
+    mv -f "$_sw_tmp" "$_sw_path" || {
+        rm -f "$_sw_tmp"
+        _sw_r.err "safe_write: rename failed: $_sw_tmp -> $_sw_path" $?
+        return 0
+    }
+
+    _sw_r.ok "$_sw_path"
+    return 0
+}

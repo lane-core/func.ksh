@@ -1,0 +1,63 @@
+# map_collect — map a function over arguments, collecting all outcomes
+#
+# Like collect, but also accumulates success values in .value
+# (newline-separated, mirroring how .error accumulates failures).
+# Useful when you need to know both what succeeded and what failed.
+#
+# The accumulator's .code counts failures. If all items succeed,
+# status stays ok and .value contains all results. If any fail,
+# status is err, .error has the failure messages, and .value has
+# the success results (partial success is still err status).
+#
+# Usage:
+#   Result_t acc
+#   map_collect acc process_item item1 item2 item3
+#   # acc.value has newline-separated success outputs
+#   # acc.error has newline-separated failure messages
+#   # acc.code counts failures
+#
+# Does not reset the accumulator — composable with prior calls.
+
+function map_collect {
+    if (( $# < 2 )); then
+        typeset -n _mc_err=$1
+        _mc_err.err "map_collect: requires at least 2 arguments (got $#)" 1
+        return 0
+    fi
+
+    typeset _mc_ref=$1 _mc_fn=$2
+    shift 2
+
+    typeset -n _mc_r=$_mc_ref
+    typeset _mc_arg
+
+    for _mc_arg; do
+        Result_t _mc_tmp
+        _mc_tmp.ok "$_mc_arg"
+
+        "$_mc_fn" _mc_tmp
+        typeset -i _mc_ret=$?
+        if (( _mc_ret != 0 )) && [[ ${_mc_tmp.status} == ok ]]; then
+            _mc_tmp.err "map_collect: $_mc_fn exited $_mc_ret without setting result" $_mc_ret
+        fi
+
+        if [[ ${_mc_tmp.status} == err ]]; then
+            if [[ ${_mc_r.status} == ok ]]; then
+                _mc_r.status=err
+                _mc_r.error="${_mc_tmp.error}"
+                _mc_r.code=1
+            else
+                _mc_r.error="${_mc_r.error}"$'\n'"${_mc_tmp.error}"
+                _mc_r.code=$(( ${_mc_r.code} + 1 ))
+            fi
+        else
+            if [[ -n ${_mc_r.value} ]]; then
+                _mc_r.value="${_mc_r.value}"$'\n'"${_mc_tmp.value}"
+            else
+                _mc_r.value="${_mc_tmp.value}"
+            fi
+        fi
+    done
+
+    return 0
+}

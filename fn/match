@@ -1,0 +1,42 @@
+# match — symmetric ok/err dispatch (the cut rule)
+#
+# Reads result status once, dispatches to exactly one continuation.
+# This is the atomic dispatch that chain and or_else are special cases of:
+#   chain r fn    ≡  match r fn -
+#   or_else r fn  ≡  match r - fn
+#
+# Usage:
+#   match r ok_fn err_fn [extra_args...]
+#
+# If ok_fn or err_fn is the literal '-', that arm is skipped (passthrough).
+# Only the dispatched arm fires — no re-checking after the first arm.
+# Silent crash detection on the ok arm (same as chain).
+# Err arm preserves root cause if handler exits without touching result.
+
+function match {
+    if (( $# < 3 )); then
+        if (( $# >= 1 )); then
+            typeset -n _ma_r=$1
+            _ma_r.err "match: requires result, ok_fn, err_fn (got $# args)" 1
+        fi
+        return 0
+    fi
+
+    typeset -n _ma_r=$1
+    typeset _ma_ref=$1 _ma_ok=$2 _ma_err=$3
+    shift 3
+
+    if [[ ${_ma_r.status} == ok ]]; then
+        [[ $_ma_ok == - ]] && return 0
+        "$_ma_ok" "$_ma_ref" "$@"
+        typeset -i _ma_ret=$?
+        if (( _ma_ret != 0 )) && [[ ${_ma_r.status} == ok ]]; then
+            _ma_r.err "match: $_ma_ok exited $_ma_ret without setting result" $_ma_ret
+        fi
+    else
+        [[ $_ma_err == - ]] && return 0
+        "$_ma_err" "$_ma_ref" "$@"
+    fi
+
+    return 0
+}

@@ -1,0 +1,39 @@
+# force — execute a suspended computation (shift-up ↑P)
+#
+# Takes a Thunk_t and applies it to a Result_t. Always executes
+# regardless of result status — gating on ok/err is the caller's
+# job (use chain/match to gate).
+#
+# Usage:
+#   Thunk_t t
+#   t.create double_value
+#   force r t               # calls: double_value r
+#   chain r force my_thunk  # ok-gated thunk execution
+#
+# Reference: Arnaud Spiwack. "A dissection of L." 2014. (↑P connective)
+
+function force {
+    typeset -n _fo_r=$1
+    typeset _fo_ref=$1
+    typeset -n _fo_t=$2
+
+    if [[ -z ${_fo_t.fn} ]]; then
+        _fo_r.err "force: empty thunk (no function)" 1
+        return 0
+    fi
+
+    typeset _fo_fn=${_fo_t.fn}
+    if [[ -n ${_fo_t.argv} ]]; then
+        eval set -- "${_fo_t.argv}"
+        "$_fo_fn" "$_fo_ref" "$@"
+    else
+        "$_fo_fn" "$_fo_ref"
+    fi
+
+    typeset -i _fo_ret=$?
+    if (( _fo_ret != 0 )) && [[ ${_fo_r.status} == ok ]]; then
+        _fo_r.err "force: $_fo_fn exited $_fo_ret without setting result" $_fo_ret
+    fi
+
+    return 0
+}

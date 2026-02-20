@@ -1,0 +1,34 @@
+# or_else — provide a fallback when a Result_t is err
+#
+# If the result is err, call the recovery function which may fix it.
+# If the result is ok, pass through unchanged.
+#
+# The recovery function MUST call _r.ok on success. If it fails, it
+# SHOULD call _r.err with a new message. If it exits non-zero without
+# touching the result, the original upstream error is preserved — this
+# is by design, since the original error is the root cause.
+#
+# Usage:
+#   Result_t r
+#   r.err "primary source failed"
+#   or_else r try_fallback_source
+#
+# The recovery function has the same signature as chain targets:
+#   function try_fallback_source {
+#       typeset -n _r=$1
+#       # _r.error has the original error message
+#       _r.ok "recovered value"   # or _r.err "also failed"
+#   }
+
+function or_else {
+    typeset -n _oe_r=$1
+    typeset _oe_ref=$1 _oe_fn=$2
+    shift 2
+
+    # Only invoke fallback on error
+    [[ ${_oe_r.status} == err ]] || return 0
+
+    "$_oe_fn" "$_oe_ref" "$@"
+
+    return 0
+}

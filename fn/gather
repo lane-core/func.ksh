@@ -1,0 +1,55 @@
+# gather — accumulate results from independent operations
+#
+# Unlike chain (which skips on error), gather ALWAYS runs the function
+# and folds the outcome into the accumulator. Each operation gets a
+# fresh Result_t pre-loaded with the input value — operations are
+# independent of each other and of the accumulator's current state.
+#
+# gather is to collect as chain is to sequence.
+# chain is monadic bind (>>=) — short-circuits on error.
+# gather is the applicative counterpart — same calling convention,
+# accumulates instead of short-circuiting.
+#
+# The accumulator's .code counts failures; .error collects messages
+# (newline-separated). A function written for chain works with gather
+# unchanged — the calling convention is identical.
+#
+# Usage:
+#   Result_t acc
+#   gather acc install_pkg "pkg1"
+#   gather acc install_pkg "pkg2" extra_arg
+#   # acc.is_ok → all succeeded; acc.is_err → N failures accumulated
+
+function gather {
+    if (( $# < 3 )); then
+        typeset -n _ga_err=$1
+        _ga_err.err "gather: requires at least 3 arguments (got $#)" 1
+        return 0
+    fi
+
+    typeset -n _ga_r=$1
+    typeset _ga_ref=$1 _ga_fn=$2 _ga_input=$3
+    shift 3
+
+    Result_t _ga_tmp
+    _ga_tmp.ok "$_ga_input"
+
+    "$_ga_fn" _ga_tmp "$@"
+    typeset -i _ga_ret=$?
+    if (( _ga_ret != 0 )) && [[ ${_ga_tmp.status} == ok ]]; then
+        _ga_tmp.err "gather: $_ga_fn exited $_ga_ret without setting result" $_ga_ret
+    fi
+
+    if [[ ${_ga_tmp.status} == err ]]; then
+        if [[ ${_ga_r.status} == ok ]]; then
+            _ga_r.status=err
+            _ga_r.error="${_ga_tmp.error}"
+            _ga_r.code=1
+        else
+            _ga_r.error="${_ga_r.error}"$'\n'"${_ga_tmp.error}"
+            _ga_r.code=$(( ${_ga_r.code} + 1 ))
+        fi
+    fi
+
+    return 0
+}
