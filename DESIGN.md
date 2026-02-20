@@ -23,8 +23,7 @@ Repository: https://github.com/aspiwack/dissect-L
 | Additive sum A ⊕ B | `case_code r code1:fn1 code2:fn2` | Tagged choice eliminated by case analysis on error codes. |
 | Shift-down ↓N | `Thunk_t t; t.new fn args` | Suspend a computation as a value. |
 | Shift-up ↑P | `force r t` | Resume a suspended computation. |
-| Exponential !A | `gather`/`collect` | Duplicate a linear resource: run N independent operations, accumulate results. |
-| Exponential ?A | Accumulator `Result_t` in gather | The context that absorbs duplicated results. |
+| Exponential !A / ?A | `gather`/`collect` | Closest analogue, not exact. !A allows reuse of a linear resource; `gather` runs N independent copies of an operation against fresh Result_t values, accumulating into one. The accumulator Result_t plays the ?A role (absorbing context). Shell value semantics mean true linearity enforcement isn't needed — see "What We Don't Need." |
 | Positive types (values) | `Result_t`, `SafeStr_t`, `SafePath_t`, `Version_t`, `Thunk_t` | Data at rest. Inert until acted on. |
 | Negative types (computations) | `chain`, `match`, `force`, `sequence`, ... | Active transformations. Consume and produce values. |
 | Commutative cuts | Pipeline fusion guidance | "Don't wrap a value only for the next step to unwrap it." |
@@ -119,17 +118,15 @@ value semantics.
 ## Memoization
 
 `memo` provides function-level result caching. The cache key includes the
-function name, the current result state, and any extra arguments:
+function name, the current result state, and any extra arguments. All key
+fields are `printf '%q'`-encoded and joined with `\x1f` (unit separator)
+to prevent delimiter collisions — a value containing `:` or any other
+printable character cannot collide with a differently-structured key.
 
-```
-ok:fn_name:value:extra_args     — for ok-status inputs
-err:fn_name:error:code:extra_args — for err-status inputs
-```
-
-Results are encoded via `printf '%q'` and decoded via `eval set --` — the
-same encode/decode pattern used by `Thunk_t`/`force`. This is safe by
-construction: the encoded string is always produced by `printf '%q'`, never
-by untrusted input.
+Cache values are also encoded via `printf '%q'` and decoded via
+`eval set --` — the same encode/decode pattern used by `Thunk_t`/`force`.
+This is safe by construction: the encoded string is always produced by
+`printf '%q'`, never by untrusted input.
 
 The cache is a global associative array (`_FUNC_KSH_MEMO`) that persists
 for the shell session. `memo_clear` resets it, optionally scoped to a

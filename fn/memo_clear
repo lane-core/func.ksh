@@ -15,10 +15,11 @@ function memo_clear {
             unset "_FUNC_KSH_MEMO[$_mc_key]"
         done
     else
-        typeset _mc_fn
+        typeset _mc_fn _mc_qfn
         for _mc_fn in "$@"; do
+            _mc_qfn=$(printf '%q' "$_mc_fn")
             for _mc_key in "${!_FUNC_KSH_MEMO[@]}"; do
-                [[ $_mc_key == ok:${_mc_fn}:* || $_mc_key == err:${_mc_fn}:* ]] &&
+                [[ $_mc_key == *$'\x1f'"${_mc_qfn}"$'\x1f'* ]] &&
                     unset "_FUNC_KSH_MEMO[$_mc_key]"
             done
         done

@@ -14,11 +14,13 @@
 # Err arm preserves root cause if handler exits without touching result.
 
 function match {
+    if (( $# == 0 )); then
+        print -u2 "match: called with no arguments"
+        return 1
+    fi
     if (( $# < 3 )); then
-        if (( $# >= 1 )); then
-            typeset -n _ma_r=$1
-            _ma_r.err "match: requires result, ok_fn, err_fn (got $# args)" 1
-        fi
+        typeset -n _ma_r=$1
+        _ma_r.err "match: requires result, ok_fn, err_fn (got $# args)" 1
         return 0
     fi
 

@@ -14,14 +14,14 @@
 #
 # Usage:
 #   # Standalone:
-#   chain r lift tr '[:upper:]' '[:lower:]'
+#   chain r lift tr '[:lower:]' '[:upper:]'
 #
 #   # In a sequence, mixed with native functions:
-#   sequence r validate lift "tr a-z A-Z" transform save
-#   # ↑ doesn't work directly because sequence passes function names,
-#   #   not commands with args. Use partial application instead:
+#   sequence r validate to_upper transform save
+#   # ↑ sequence passes function names, not commands with args.
+#   #   Use partial application instead:
 #
-#   function to_upper { lift "$1" tr '[:upper:]' '[:lower:]'; }
+#   function to_upper { lift "$1" tr '[:lower:]' '[:upper:]'; }
 #   sequence r validate to_upper transform save
 
 function lift {

@@ -135,10 +135,13 @@ assert_eq "memo after clear" "$call_count" "2"
 memo_clear
 call_count=0
 
-Result_t mc3
-mc3.ok "5"
-chain mc3 memo counting_double
-chain mc3 memo counting_add 10
+Result_t mc3a
+mc3a.ok "5"
+chain mc3a memo counting_double
+
+Result_t mc3b
+mc3b.ok "5"
+chain mc3b memo counting_add 10
 
 assert_eq "memo two fns count" "$call_count" "2"
 
@@ -151,9 +154,30 @@ chain mc4 memo counting_double
 assert_eq "memo selective clear fires" "$call_count" "1"
 
 Result_t mc5
-mc5.ok "10"
+mc5.ok "5"
 chain mc5 memo counting_add 10
 assert_eq "memo selective clear keeps" "$call_count" "1"
+
+# --- values with colons don't cause key collisions ---
+memo_clear
+call_count=0
+
+function identity {
+    typeset -n _r=$1
+    (( call_count++ ))
+    return 0
+}
+
+Result_t mc8
+mc8.ok "a:b"
+chain mc8 memo identity
+assert_eq "memo colon value" "${mc8.value}" "a:b"
+assert_eq "memo colon count" "$call_count" "1"
+
+Result_t mc9
+mc9.ok "a"
+chain mc9 memo identity
+assert_eq "memo no-colon distinct" "$call_count" "2"
 
 # ===== memo: crash detection =====
 
