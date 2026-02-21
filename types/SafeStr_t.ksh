@@ -16,17 +16,9 @@ typeset -T SafeStr_t=(
         # newline (\x0a). This covers: \x01-\x08, \x0b-\x1f, \x7f.
         # Notably includes \x0d (CR, terminal line overwrite),
         # \x1b (ESC, ANSI escape sequences), and the rest of C0.
-        if [[ $v == *$'\x01'* || $v == *$'\x02'* || $v == *$'\x03'* || \
-              $v == *$'\x04'* || $v == *$'\x05'* || $v == *$'\x06'* || \
-              $v == *$'\x07'* || $v == *$'\x08'* || \
-              $v == *$'\x0b'* || $v == *$'\x0c'* || $v == *$'\x0d'* || \
-              $v == *$'\x0e'* || $v == *$'\x0f'* || \
-              $v == *$'\x10'* || $v == *$'\x11'* || $v == *$'\x12'* || \
-              $v == *$'\x13'* || $v == *$'\x14'* || $v == *$'\x15'* || \
-              $v == *$'\x16'* || $v == *$'\x17'* || $v == *$'\x18'* || \
-              $v == *$'\x19'* || $v == *$'\x1a'* || $v == *$'\x1b'* || \
-              $v == *$'\x1c'* || $v == *$'\x1d'* || $v == *$'\x1e'* || \
-              $v == *$'\x1f'* || $v == *$'\x7f'* ]]; then
+        typeset _bad=$'\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0d\x0e\x0f'
+        _bad+=$'\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f\x7f'
+        if [[ $v == *[$_bad]* ]]; then
             print -u2 "SafeStr_t: rejected value containing control characters"
             .sh.value=${_.value}
             return 1

@@ -42,9 +42,7 @@ function gather {
 
     if [[ ${_ga_tmp.status} == err ]]; then
         if [[ ${_ga_r.status} == ok ]]; then
-            _ga_r.status=err
-            _ga_r.error="${_ga_tmp.error}"
-            _ga_r.code=1
+            _ga_r.err "${_ga_tmp.error}" 1
         else
             _ga_r.error="${_ga_r.error}"$'\n'"${_ga_tmp.error}"
             _ga_r.code=$(( ${_ga_r.code} + 1 ))

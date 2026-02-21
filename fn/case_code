@@ -28,6 +28,10 @@ function case_code {
         if [[ $_cc_code == default || $_cc_code == "${_cc_r.code}" ]]; then
             [[ $_cc_fn == - ]] && return 0
             "$_cc_fn" "$_cc_ref"
+            typeset -i _cc_ret=$?
+            if (( _cc_ret != 0 )) && [[ ${_cc_r.status} == ok ]]; then
+                _cc_r.err "case_code: $_cc_fn exited $_cc_ret without setting result" $_cc_ret
+            fi
             return 0
         fi
     done

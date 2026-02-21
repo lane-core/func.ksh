@@ -34,6 +34,26 @@ function both {
     typeset -i _bo_fails=0
     typeset _bo_errors=''
 
+    # POSIX-style (not `function`) so it shares the caller's scope —
+    # can see and modify _bo_input, _bo_fails, _bo_errors directly.
+    _bo_run_step() {
+        Result_t _bo_tmp
+        _bo_tmp.ok "$_bo_input"
+        "$1" _bo_tmp "${@:2}"
+        typeset -i _bo_ret=$?
+        if (( _bo_ret != 0 )) && [[ ${_bo_tmp.status} == ok ]]; then
+            _bo_tmp.err "both: $1 exited $_bo_ret without setting result" $_bo_ret
+        fi
+        if [[ ${_bo_tmp.status} == err ]]; then
+            if (( _bo_fails == 0 )); then
+                _bo_errors="${_bo_tmp.error}"
+            else
+                _bo_errors="${_bo_errors}"$'\n'"${_bo_tmp.error}"
+            fi
+            (( _bo_fails++ ))
+        fi
+    }
+
     case " $* " in
     *' -- '*)
         typeset -a _bo_step=()
@@ -41,21 +61,7 @@ function both {
             if [[ $1 == '--' ]]; then
                 shift
                 if (( ${#_bo_step[@]} > 0 )); then
-                    Result_t _bo_tmp
-                    _bo_tmp.ok "$_bo_input"
-                    "${_bo_step[0]}" _bo_tmp "${_bo_step[@]:1}"
-                    typeset -i _bo_ret=$?
-                    if (( _bo_ret != 0 )) && [[ ${_bo_tmp.status} == ok ]]; then
-                        _bo_tmp.err "both: ${_bo_step[0]} exited $_bo_ret without setting result" $_bo_ret
-                    fi
-                    if [[ ${_bo_tmp.status} == err ]]; then
-                        if (( _bo_fails == 0 )); then
-                            _bo_errors="${_bo_tmp.error}"
-                        else
-                            _bo_errors="${_bo_errors}"$'\n'"${_bo_tmp.error}"
-                        fi
-                        (( _bo_fails++ ))
-                    fi
+                    _bo_run_step "${_bo_step[@]}"
                 fi
                 _bo_step=()
             else
@@ -64,41 +70,13 @@ function both {
             fi
         done
         if (( ${#_bo_step[@]} > 0 )); then
-            Result_t _bo_tmp
-            _bo_tmp.ok "$_bo_input"
-            "${_bo_step[0]}" _bo_tmp "${_bo_step[@]:1}"
-            typeset -i _bo_ret=$?
-            if (( _bo_ret != 0 )) && [[ ${_bo_tmp.status} == ok ]]; then
-                _bo_tmp.err "both: ${_bo_step[0]} exited $_bo_ret without setting result" $_bo_ret
-            fi
-            if [[ ${_bo_tmp.status} == err ]]; then
-                if (( _bo_fails == 0 )); then
-                    _bo_errors="${_bo_tmp.error}"
-                else
-                    _bo_errors="${_bo_errors}"$'\n'"${_bo_tmp.error}"
-                fi
-                (( _bo_fails++ ))
-            fi
+            _bo_run_step "${_bo_step[@]}"
         fi
         ;;
     *)
         typeset _bo_fn
         for _bo_fn; do
-            Result_t _bo_tmp
-            _bo_tmp.ok "$_bo_input"
-            "$_bo_fn" _bo_tmp
-            typeset -i _bo_ret=$?
-            if (( _bo_ret != 0 )) && [[ ${_bo_tmp.status} == ok ]]; then
-                _bo_tmp.err "both: $_bo_fn exited $_bo_ret without setting result" $_bo_ret
-            fi
-            if [[ ${_bo_tmp.status} == err ]]; then
-                if (( _bo_fails == 0 )); then
-                    _bo_errors="${_bo_tmp.error}"
-                else
-                    _bo_errors="${_bo_errors}"$'\n'"${_bo_tmp.error}"
-                fi
-                (( _bo_fails++ ))
-            fi
+            _bo_run_step "$_bo_fn"
         done
         ;;
     esac

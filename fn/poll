@@ -29,17 +29,19 @@ function poll {
         return 1
     fi
 
-    # Check if background process is still running
+    # Channel is ground truth — check it before PID to avoid
+    # false "still pending" from PID reuse after disown.
+    if [[ -s ${_pl.channel} ]]; then
+        _pl.status=resolved
+        return 0
+    fi
+
+    # Channel empty — check if process is still running
     if kill -0 ${_pl.pid} 2>/dev/null; then
         return 1
     fi
 
-    # Process finished — mark based on channel state
-    if [[ -s ${_pl.channel} ]]; then
-        _pl.status=resolved
-    else
-        _pl.status=failed
-    fi
-
+    # Process gone, channel still empty — crashed without writing
+    _pl.status=failed
     return 0
 }

@@ -242,5 +242,30 @@ case_code c11 6:handle_code6 22:handle_code22
 wrap_err c11 "fetching config"
 assert_eq "case_code+wrap_err" "${c11.error}" "fetching config: timeout"
 
+# --- case_code crash detection: handler recovers then crashes ---
+function recover_then_crash {
+    typeset -n _r=$1
+    _r.ok "recovered"
+    return 33
+}
+Result_t c12
+c12.err "fixable" 6
+case_code c12 6:recover_then_crash
+assert_eq "case_code crash detect status" "${c12.status}" "err"
+assert_eq "case_code crash detect code" "${c12.code}" "33"
+assert_match "case_code crash detect msg" "${c12.error}" "*case_code:*recover_then_crash*exited*33*"
+
+# --- case_code root cause preserved: handler crashes without recovery ---
+function crash_during_handling {
+    typeset -n _r=$1
+    return 19
+}
+Result_t c13
+c13.err "original problem" 22
+case_code c13 22:crash_during_handling
+assert_eq "case_code root cause status" "${c13.status}" "err"
+assert_eq "case_code root cause msg" "${c13.error}" "original problem"
+assert_eq "case_code root cause code" "${c13.code}" "22"
+
 print "match+case_code: ${pass} passed, ${fail} failed"
 (( fail == 0 ))

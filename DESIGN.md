@@ -25,7 +25,7 @@ Repository: https://github.com/aspiwack/dissect-L
 | Shift-up ↑P | `force r t` | Resume a suspended computation. |
 | Tensor A ⊗ B | `both r fn1 fn2` | Independent operations on same input, all must succeed. Split resources: each fn gets fresh Result_t. |
 | Additive sum A ⊕ B (success side) | `first r fn1 fn2` | Try alternatives on original input, first success wins. Dual of `case_code`. |
-| Exponential !A / ?A | `gather`/`collect` | Closest analogue, not exact. !A allows reuse of a linear resource; `gather` runs N independent copies of an operation against fresh Result_t values, accumulating into one. The accumulator Result_t plays the ?A role (absorbing context). Shell value semantics mean true linearity enforcement isn't needed — see "What We Don't Need." |
+| Exponential !A / ?A | `tap` (structural), `gather`/`collect` (operational) | `tap` is the structural match: save/run/restore is the promote/observe/discard cycle of !A. `gather`/`collect` are the operational pattern: run N independent copies against fresh Result_t values, accumulating into one (the accumulator plays the ?A role). Shell value semantics mean true linearity enforcement isn't needed — see "What We Don't Need." |
 | Positive types (values) | `Result_t`, `SafeStr_t`, `SafePath_t`, `Version_t`, `Thunk_t` | Data at rest. Inert until acted on. |
 | Negative types (computations) | `chain`, `match`, `force`, `sequence`, ... | Active transformations. Consume and produce values. |
 | Commutative cuts | Pipeline fusion guidance | "Don't wrap a value only for the next step to unwrap it." |
@@ -48,6 +48,11 @@ Independent (own status checks):
   ├── tap       observation (save/restore = implicit !)
   ├── gather    accumulate (one fn, many inputs)
   └── wrap_err  error annotation
+
+Async (shift-down/up across fork boundary):
+  ├── defer     spawn background computation → Future_t
+  ├── poll      non-blocking completion check
+  └── await     blocking wait, consumes Future_t → Result_t
 ```
 
 Every combinator that dispatches on ok/err status bottoms out at `match`.
@@ -118,6 +123,49 @@ Key contrasts:
   runs N *different* functions once each.
 - `both` vs. multiple guards via `chain`: guards short-circuit on first
   failure. `both` runs all validators and reports everything that's wrong.
+
+### Async: defer / await / poll
+
+`Thunk_t`/`force` implement synchronous shift-down/up — suspend a computation
+as a value, resume it later, all within the current shell. `defer`/`await`
+extend this across a fork boundary: the computation runs in a background
+subshell and communicates its result through a file-backed channel.
+
+The session type protocol is minimal:
+- **Background** (`defer`): `!Result_t.end` — sends one Result_t, exits.
+- **Parent** (`await`): `?Result_t.end` — receives one Result_t, session ends.
+
+The channel file encodes the result as two parts: a header line (`ok` or
+`err CODE`) and the body (value or error message). `await` reads this via
+file descriptors (no `$()` subshell) to preserve trailing newlines.
+
+**Linearity enforcement.** `await` consumes the future — it reads the channel,
+removes the file, and resets the `Future_t` to empty state. Calling `await`
+twice on the same future is an error. To make a result reusable (the `!A`
+exponential), cache the `Result_t` after awaiting, or use `memo` on the
+computation instead of `defer`.
+
+**Relationship to Thunk_t/force.** Both pairs are shift-down/up:
+
+| | Shift-down (suspend) | Shift-up (resume) | Execution |
+|---|---|---|---|
+| `Thunk_t`/`force` | `t.new fn args` | `force r t` | Synchronous, in-process |
+| `Future_t`/`defer`+`await` | `defer f fn args` | `await r f` | Asynchronous, cross-fork |
+
+`poll` is a non-blocking probe — it checks whether the background process has
+exited (`kill -0`) and updates the `Future_t` status without consuming it.
+`poll` followed by `await` is guaranteed not to block.
+
+**Dedup mechanism.** The `-k` flag on `defer` assigns a semantic key to the
+future. If a future with the same key is already pending, `defer` is a no-op.
+This prevents redundant spawns when the same computation is requested multiple
+times (e.g., polling git status from multiple hooks). Without `-k`, each
+`defer` call spawns unconditionally.
+
+**Nameref limitation.** Compound type namerefs (`Result_t`) don't survive fork
+boundaries — a subshell gets a copy, not a reference. This is why `defer`
+serializes the result to a file rather than passing it through a nameref. The
+same limitation applies to `gather`'s inability to parallelize with `&`.
 
 ### Avoiding subshells
 
@@ -206,9 +254,12 @@ representation, and intentionally so:
   of the four connective families. These are identity elements with no
   runtime representation — the empty tensor, the trivially-true choice, etc.
   In shell, "do nothing" is just... not calling a function.
-- **Explicit !/? (exponential modalities)**: `gather` is the operational
-  pattern. `tap` provides the promote/observe/discard cycle. Shell value
-  semantics make explicit tracking unnecessary — see `dup` above.
+- **Explicit !/? (exponential modalities)**: `tap` is the structural match
+  — save/run/restore is the !A promote/observe/discard cycle. `gather` and
+  `collect` are the operational pattern — running N independent copies
+  against fresh Result_t values, with the accumulator as the ?A absorbing
+  context. Shell value semantics make explicit tracking unnecessary —
+  see `dup` above.
 
 
 ## Patterns

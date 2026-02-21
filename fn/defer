@@ -76,6 +76,7 @@ function defer {
     #
     # After disown, wait(1) cannot reap the process. poll/await use
     # kill -0 to detect completion instead.
+    [[ -o monitor ]] && typeset -i _df_was_monitor=1 || typeset -i _df_was_monitor=0
     set +m
     (
         Result_t _defer_r
@@ -97,8 +98,8 @@ function defer {
     _df.key=${key:-$fn}
     _df.status=pending
 
-    # Restore monitor mode for the interactive shell.
-    set -m
+    # Restore monitor mode only if it was on before.
+    (( _df_was_monitor )) && set -m
 
     return 0
 }

@@ -6,7 +6,7 @@
 #
 # Usage:
 #   Thunk_t t
-#   t.create double_value
+#   t.new double_value
 #   force r t               # calls: double_value r
 #   chain r force my_thunk  # ok-gated thunk execution
 #

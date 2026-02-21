@@ -38,6 +38,9 @@ function await {
     # the process is already gone and this doesn't loop at all.
     if (( _aw_f.pid > 0 )); then
         while kill -0 ${_aw_f.pid} 2>/dev/null; do
+            # Channel is ground truth — break if data arrived,
+            # even if PID was reused by an unrelated process.
+            [[ -s ${_aw_f.channel} ]] && break
             sleep 0.01
         done
     fi

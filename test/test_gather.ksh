@@ -93,6 +93,14 @@ gather g6 crash_silent "input"
 assert_eq "gather defensive catch status" "${g6.status}" "err"
 assert_match "gather defensive catch msg" "${g6.error}" "*gather:*crash_silent*exited*7*"
 
+# --- gather: first error clears .value ---
+Result_t g9
+g9.ok "pre-set value"
+g9.value="leftover data"
+gather g9 always_fail_ga "oops"
+assert_eq "gather clears value status" "${g9.status}" "err"
+assert_eq "gather clears value" "${g9.value}" ""
+
 # --- collect: batch success ---
 Result_t c1
 collect c1 succeed_with_upper a b c

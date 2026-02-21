@@ -10,9 +10,18 @@
 
 function safe_fetch {
     typeset _sf_to_file=false
-    # Track where -o appeared to disambiguate direct vs chain mode.
-    # -o before result var → direct (safe_fetch -o r url /path)
-    # -o after result var  → chain  (chain r safe_fetch -o /path)
+    # Disambiguate direct vs chain mode via the position of -o.
+    #
+    # Direct mode: safe_fetch [-o] result_var url [path]
+    #   Caller provides URL explicitly. -o before the result var
+    #   means we expect both URL and output path after it.
+    #
+    # Chain mode:  chain result_var safe_fetch [-o path]
+    #   URL comes from result_var.value. -o after the result var
+    #   means $1 is the output path, not the URL.
+    #
+    # _sf_o_pos tracks which position -o was found in ('direct' or
+    # 'chain') so the argument parser below can resolve URL vs path.
     typeset _sf_o_pos=''
     if [[ ${1:-} == -o ]]; then
         _sf_to_file=true

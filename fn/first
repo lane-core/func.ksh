@@ -37,6 +37,31 @@ function first {
     typeset _fi_input=${_fi_r.value}
     typeset -i _fi_fails=0
     typeset _fi_errors=''
+    typeset _fi_found=false
+
+    # POSIX-style (not `function`) so it shares the caller's scope —
+    # can see and modify _fi_input, _fi_fails, _fi_errors, _fi_found.
+    # Sets _fi_found=true on first success (caller must check + break).
+    _fi_run_step() {
+        Result_t _fi_tmp
+        _fi_tmp.ok "$_fi_input"
+        "$1" _fi_tmp "${@:2}"
+        typeset -i _fi_ret=$?
+        if (( _fi_ret != 0 )) && [[ ${_fi_tmp.status} == ok ]]; then
+            _fi_tmp.err "first: $1 exited $_fi_ret without setting result" $_fi_ret
+        fi
+        if [[ ${_fi_tmp.status} == ok ]]; then
+            _fi_r.ok "${_fi_tmp.value}"
+            _fi_found=true
+            return 0
+        fi
+        if (( _fi_fails == 0 )); then
+            _fi_errors="${_fi_tmp.error}"
+        else
+            _fi_errors="${_fi_errors}"$'\n'"${_fi_tmp.error}"
+        fi
+        (( _fi_fails++ ))
+    }
 
     case " $* " in
     *' -- '*)
@@ -45,23 +70,8 @@ function first {
             if [[ $1 == '--' ]]; then
                 shift
                 if (( ${#_fi_step[@]} > 0 )); then
-                    Result_t _fi_tmp
-                    _fi_tmp.ok "$_fi_input"
-                    "${_fi_step[0]}" _fi_tmp "${_fi_step[@]:1}"
-                    typeset -i _fi_ret=$?
-                    if (( _fi_ret != 0 )) && [[ ${_fi_tmp.status} == ok ]]; then
-                        _fi_tmp.err "first: ${_fi_step[0]} exited $_fi_ret without setting result" $_fi_ret
-                    fi
-                    if [[ ${_fi_tmp.status} == ok ]]; then
-                        _fi_r.ok "${_fi_tmp.value}"
-                        return 0
-                    fi
-                    if (( _fi_fails == 0 )); then
-                        _fi_errors="${_fi_tmp.error}"
-                    else
-                        _fi_errors="${_fi_errors}"$'\n'"${_fi_tmp.error}"
-                    fi
-                    (( _fi_fails++ ))
+                    _fi_run_step "${_fi_step[@]}"
+                    [[ $_fi_found == true ]] && return 0
                 fi
                 _fi_step=()
             else
@@ -70,45 +80,15 @@ function first {
             fi
         done
         if (( ${#_fi_step[@]} > 0 )); then
-            Result_t _fi_tmp
-            _fi_tmp.ok "$_fi_input"
-            "${_fi_step[0]}" _fi_tmp "${_fi_step[@]:1}"
-            typeset -i _fi_ret=$?
-            if (( _fi_ret != 0 )) && [[ ${_fi_tmp.status} == ok ]]; then
-                _fi_tmp.err "first: ${_fi_step[0]} exited $_fi_ret without setting result" $_fi_ret
-            fi
-            if [[ ${_fi_tmp.status} == ok ]]; then
-                _fi_r.ok "${_fi_tmp.value}"
-                return 0
-            fi
-            if (( _fi_fails == 0 )); then
-                _fi_errors="${_fi_tmp.error}"
-            else
-                _fi_errors="${_fi_errors}"$'\n'"${_fi_tmp.error}"
-            fi
-            (( _fi_fails++ ))
+            _fi_run_step "${_fi_step[@]}"
+            [[ $_fi_found == true ]] && return 0
         fi
         ;;
     *)
         typeset _fi_fn
         for _fi_fn; do
-            Result_t _fi_tmp
-            _fi_tmp.ok "$_fi_input"
-            "$_fi_fn" _fi_tmp
-            typeset -i _fi_ret=$?
-            if (( _fi_ret != 0 )) && [[ ${_fi_tmp.status} == ok ]]; then
-                _fi_tmp.err "first: $_fi_fn exited $_fi_ret without setting result" $_fi_ret
-            fi
-            if [[ ${_fi_tmp.status} == ok ]]; then
-                _fi_r.ok "${_fi_tmp.value}"
-                return 0
-            fi
-            if (( _fi_fails == 0 )); then
-                _fi_errors="${_fi_tmp.error}"
-            else
-                _fi_errors="${_fi_errors}"$'\n'"${_fi_tmp.error}"
-            fi
-            (( _fi_fails++ ))
+            _fi_run_step "$_fi_fn"
+            [[ $_fi_found == true ]] && return 0
         done
         ;;
     esac
