@@ -1,0 +1,32 @@
+# p_chainr1 — right-associative operator chain (iterative: collect then fold right)
+
+function p_chainr1 {
+    typeset -n _r=$1 _s=$2
+    typeset _ref=$1 _sref=$2 _operand=$3 _operator=$4
+    "$_operand" "$_ref" "$_sref"
+    if [[ ${_r.status} == err ]]; then return 0; fi
+    typeset -a _cr_vals _cr_ops
+    _cr_vals+=("${_r.value}")
+    typeset -i _saved
+    while :; do
+        _saved=${_s.pos}
+        "$_operator" "$_ref" "$_sref"
+        if [[ ${_r.status} == err ]]; then _s.pos=$_saved; break; fi
+        _cr_ops+=("${_r.value}")
+        "$_operand" "$_ref" "$_sref"
+        if [[ ${_r.status} == err ]]; then
+            _s.pos=$_saved
+            unset '_cr_ops[-1]'
+            break
+        fi
+        _cr_vals+=("${_r.value}")
+    done
+    # Fold right: vals=[a,b,c] ops=[^,^] → "a ^ b ^ c"
+    typeset -i _i=${#_cr_vals[@]}-1
+    typeset _acc=${_cr_vals[_i]}
+    while (( _i > 0 )); do
+        (( _i-- ))
+        _acc="${_cr_vals[_i]} ${_cr_ops[_i]} ${_acc}"
+    done
+    _r.ok "$_acc"
+}

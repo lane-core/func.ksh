@@ -1,0 +1,10 @@
+# p_peek — lookahead: try parser without consuming input
+
+function p_peek {
+    typeset -n _r=$1 _s=$2
+    typeset _ref=$1 _sref=$2 _parser=$3
+    shift 3
+    typeset -i _saved=${_s.pos}
+    "$_parser" "$_ref" "$_sref" "$@"
+    _s.pos=$_saved
+}

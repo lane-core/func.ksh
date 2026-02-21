@@ -1,0 +1,18 @@
+# p_choice — deterministic choice: try N parsers in order, first success wins
+
+function p_choice {
+    typeset -n _r=$1 _s=$2
+    typeset _ref=$1 _sref=$2
+    shift 2
+    if (( $# == 0 )); then
+        _r.err "p_choice: no parsers given at position ${_s.pos}" 1 "${_s.pos}"
+        return 0
+    fi
+    typeset -i _saved=${_s.pos}
+    typeset _p
+    for _p; do
+        _s.pos=$_saved
+        "$_p" "$_ref" "$_sref"
+        if [[ ${_r.status} == ok ]]; then return 0; fi
+    done
+}

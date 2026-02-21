@@ -1,0 +1,17 @@
+# p_string — parse a specific string
+
+function p_string {
+    typeset -n _r=$1 _s=$2
+    typeset _str=$3
+    typeset -i _saved=${_s.pos} _slen=${#_str}
+    if (( _s.pos + _slen > _s.len )); then
+        _r.err "expected '$_str' at position $_saved" $P_ERR_EXPECT "$_saved"
+        return 0
+    fi
+    if [[ ${_s.input:_s.pos:_slen} == "$_str" ]]; then
+        (( _s.pos += _slen ))
+        _r.ok "$_str"
+    else
+        _r.err "expected '$_str' at position $_saved" $P_ERR_EXPECT "$_saved"
+    fi
+}

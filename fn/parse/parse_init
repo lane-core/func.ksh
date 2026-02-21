@@ -1,0 +1,6 @@
+# parse_init — initialize parse state compound variable
+
+function parse_init {
+    typeset -n _pi=$1
+    _pi=( input="$2" pos=0 len=${#2} )
+}

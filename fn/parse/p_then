@@ -1,0 +1,10 @@
+# p_then — sequence: run p1 then p2, keep p2's result
+
+function p_then {
+    typeset -n _r=$1 _s=$2
+    typeset _ref=$1 _sref=$2 _p1=$3 _p2=$4
+    shift 4
+    "$_p1" "$_ref" "$_sref"
+    if [[ ${_r.status} == err ]]; then return 0; fi
+    "$_p2" "$_ref" "$_sref" "$@"
+}

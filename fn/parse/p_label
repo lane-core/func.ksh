@@ -1,0 +1,11 @@
+# p_label — annotate error with descriptive label (wrap_err style)
+
+function p_label {
+    typeset -n _r=$1 _s=$2
+    typeset _ref=$1 _sref=$2 _label=$3 _parser=$4
+    shift 4
+    "$_parser" "$_ref" "$_sref" "$@"
+    if [[ ${_r.status} == err ]]; then
+        _r.err "expected ${_label}: ${_r.error}" $P_ERR_LABEL "${_r.origin}"
+    fi
+}

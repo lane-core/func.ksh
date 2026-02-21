@@ -390,3 +390,71 @@ method still executes correctly, but the stderr noise is unacceptable.
 
 Other method names (`ok`, `err`, `new`, `make`, `init`, etc.) do not
 trigger this. `Thunk_t` uses `.new` instead of `.create` for this reason.
+
+
+## Parser Combinators
+
+func.ksh includes a monadic parser combinator library based on Hutton &
+Meijer's "Monadic Parser Combinators" (1996, Technical Report
+NOTTCS-TR-96-4, University of Nottingham). The parsers live in `fn/parse/`
+and are autoloaded alongside the core `fn/` combinators.
+
+### Calling convention
+
+Every parser takes a Result_t variable name as `$1` and a parse state
+compound variable name as `$2`:
+
+```ksh
+Result_t r
+typeset -C ps
+parse_init ps "hello world"
+p_string r ps "hello"
+```
+
+Parse state is a compound variable with `.input`, `.pos`, and `.len` fields,
+initialized by `parse_init`. Parsers advance `.pos` on success and leave it
+unchanged (or restore it) on failure.
+
+After parsing, the Result_t feeds directly into func.ksh combinators:
+
+```ksh
+p_integer r ps
+chain r validate_range 1 100
+or_else r use_default_port
+wrap_err r "config parse"
+```
+
+Error codes (`P_ERR_EOF`, `P_ERR_UNEXP`, `P_ERR_EXPECT`, `P_ERR_LABEL`)
+enable `case_code` dispatch on failure type:
+
+```ksh
+p_integer r ps
+case_code r $P_ERR_EOF:handle_eof $P_ERR_EXPECT:handle_bad_input
+```
+
+### Scope constraint
+
+Result_t variables passed to parsers MUST be declared at file scope, not
+inside a function. ksh93u+m compound-type namerefs resolve discipline
+functions (`.ok`, `.err`) through the full scope chain for global variables,
+but only 1 level deep for function-local variables. Since combinators like
+`p_natural`, `p_integer`, and `p_token` add scope levels before calling
+leaf parsers (`p_many1` -> `p_digit`), a function-local Result_t will
+silently fail. Parse state (`typeset -C`) is not affected — only Result_t.
+See "Compound type namerefs" above for details.
+
+### Combinator pass-through
+
+Combinators pass the caller's Result_t name through to sub-parsers rather
+than creating local Result_t intermediaries. This avoids the compound-type
+nameref depth limit: the sub-parser's nameref resolves to the (file-scope)
+Result_t regardless of call depth. The combinator reads status/value via
+its own 1-level nameref after each sub-parser returns.
+
+### Character parsers are inlined
+
+`p_digit`, `p_alpha`, `p_alnum`, `p_lower`, `p_upper`, and `p_space` are
+inlined rather than delegating to `p_sat`. A thin wrapper like
+`function p_digit { p_sat "$1" "$2" _p_is_digit; }` would add an extra
+scope level that breaks when called from inside a combinator due to the
+nameref depth limit described above.

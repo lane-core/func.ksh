@@ -1,0 +1,16 @@
+# p_not — negative lookahead: succeed if parser fails, fail if succeeds
+
+function p_not {
+    typeset -n _r=$1 _s=$2
+    typeset _ref=$1 _sref=$2 _parser=$3
+    shift 3
+    typeset -i _saved=${_s.pos}
+    "$_parser" "$_ref" "$_sref" "$@"
+    _s.pos=$_saved
+    if [[ ${_r.status} == ok ]]; then
+        typeset _unexpected=${_r.value}
+        _r.err "unexpected '${_unexpected}' at position ${_saved}" $P_ERR_UNEXP "${_saved}"
+    else
+        _r.ok ""
+    fi
+}

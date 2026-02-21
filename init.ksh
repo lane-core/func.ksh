@@ -64,4 +64,31 @@ for _f in "${_FUNC_KSH_ROOT}"/fn/*; do
 done
 unset _f
 
+# Parser combinator constants
+typeset -ri P_ERR_EOF=10
+typeset -ri P_ERR_UNEXP=20
+typeset -ri P_ERR_EXPECT=30
+typeset -ri P_ERR_LABEL=40
+
+# Parser internal helpers
+function _p_skip_spaces {
+    typeset -n _s=$1
+    while (( _s.pos < _s.len )) && [[ ${_s.input:_s.pos:1} == [[:space:]] ]]; do
+        (( _s.pos++ ))
+    done
+}
+function _p_is_digit { [[ $1 == [0-9] ]]; }
+function _p_is_alpha { [[ $1 == [a-zA-Z] ]]; }
+function _p_is_alnum { [[ $1 == [a-zA-Z0-9] ]]; }
+function _p_is_lower { [[ $1 == [a-z] ]]; }
+function _p_is_upper { [[ $1 == [A-Z] ]]; }
+function _p_is_space { [[ $1 == [[:space:]] ]]; }
+
+# Register parser autoloaded functions
+FPATH="${_FUNC_KSH_ROOT}/fn/parse${FPATH:+:${FPATH}}"
+for _f in "${_FUNC_KSH_ROOT}"/fn/parse/*; do
+    [[ -f $_f ]] && autoload "${_f##*/}"
+done
+unset _f
+
 _FUNC_KSH_INIT=1
