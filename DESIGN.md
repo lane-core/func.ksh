@@ -218,6 +218,51 @@ don't memoize those.
 
 ## ksh93u+m Quirks
 
+### Compound type namerefs have a 1-level scope depth limit
+
+When `typeset -n ref=varname` targets a compound type (`typeset -T`
+instance like `Result_t`), the variable must be declared in the
+immediate calling scope. Discipline functions (`.ok`, `.err`, `.is_ok`,
+etc.) fail to resolve if the target is 2+ function scopes away.
+
+```ksh
+function outer {
+    Result_t r
+    middle r
+}
+function middle {
+    typeset -n _m_r=$1        # nameref to r, 1 scope up — works
+    _m_r.ok "hello"           # discipline function resolves
+    inner "$1"
+}
+function inner {
+    typeset -n _i_r=$1        # nameref to r, 2 scopes up — FAILS
+    _i_r.ok "hello"           # "not found" error
+}
+```
+
+This is why `try_cmd` needs its Result_t target in the immediate caller.
+If you're writing a function that takes a Result_t name and internally
+calls `try_cmd`, use a local Result_t for try_cmd and transfer the
+result to the caller's Result_t via your 1-level nameref:
+
+```ksh
+function my_operation {
+    typeset -n _mo_r=$1       # 1-level nameref to caller's Result_t
+    Result_t _mo_tmp          # local for try_cmd (1-level from here)
+    try_cmd _mo_tmp command git clone -- "$url" "$dest"
+    if _mo_tmp.is_err; then
+        _mo_r.err "clone failed: ${_mo_tmp.error}" ${_mo_tmp.code}
+        return 0
+    fi
+    _mo_r.ok "$dest"
+}
+```
+
+Simple namerefs (to scalars and indexed arrays) don't have this
+limitation — they resolve through the full dynamic scope chain.
+The constraint is specific to compound types with discipline functions.
+
 ### `create` is a reserved type method name
 
 ksh93u+m's type system treats `create` specially. A type method named

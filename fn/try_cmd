@@ -14,6 +14,12 @@
 # lazy-initialized on first use and reused across calls.
 #
 # Limitations:
+#   - The Result_t variable must be declared in the immediate calling
+#     scope. Compound type namerefs in ksh93u+m can't resolve discipline
+#     functions (.ok, .err) when the target is 2+ scopes away. If you're
+#     calling try_cmd from inside a helper that received a Result_t name,
+#     use a local Result_t for try_cmd and transfer the result.
+#     See DESIGN.md "Compound type namerefs" for the full pattern.
 #   - Do not nest try_cmd inside a command passed to try_cmd.
 #   - Not safe for concurrent use (background jobs, coprocesses)
 #     since all calls share the same stderr capture file.
