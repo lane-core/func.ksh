@@ -66,6 +66,17 @@ function defer {
     #   Line 1: "ok" or "err CODE"
     #   Line 2+: value or error message
     # Stderr is captured separately in $channel.err for debugging.
+    #
+    # Suppress job control for internal background processes:
+    #   1. set +m — disable monitor mode so & doesn't print "[N] PID"
+    #      and the job isn't added to the table (prevents "[N] Done"
+    #      notifications and inflated jobs -p counts in the prompt)
+    #   2. disown — belt-and-suspenders removal from the job table,
+    #      in case set +m is insufficient in discipline function context
+    #
+    # After disown, wait(1) cannot reap the process. poll/await use
+    # kill -0 to detect completion instead.
+    set +m
     (
         Result_t _defer_r
         "$fn" _defer_r "$@"
@@ -80,13 +91,14 @@ function defer {
     ) >|"$channel" 2>|"$channel.err" &
 
     _df.pid=$!
+    disown $! 2>/dev/null
+
     _df.channel=$channel
     _df.key=${key:-$fn}
     _df.status=pending
 
-    # No disown: we need `wait` to work correctly in `await`.
-    # Job notifications are suppressed by awaiting before the shell
-    # checks for completed jobs (e.g., from a PS1 discipline function).
+    # Restore monitor mode for the interactive shell.
+    set -m
 
     return 0
 }

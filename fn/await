@@ -32,11 +32,14 @@ function await {
     fi
 
     # Wait for background process to finish.
-    # This works because we do NOT disown the background job in defer.
-    # wait(1) properly blocks until the process exits and reaps it,
-    # which also prevents "[N] + Done" job notifications.
+    # defer uses disown to suppress job notifications, which makes
+    # wait(1) unable to find the PID. Instead, spin on kill -0.
+    # In the common case (called after poll confirms completion),
+    # the process is already gone and this doesn't loop at all.
     if (( _aw_f.pid > 0 )); then
-        wait ${_aw_f.pid} 2>/dev/null || true
+        while kill -0 ${_aw_f.pid} 2>/dev/null; do
+            sleep 0.01
+        done
     fi
 
     # Read result from channel using file descriptors (no subshell fork,
