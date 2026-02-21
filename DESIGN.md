@@ -23,6 +23,8 @@ Repository: https://github.com/aspiwack/dissect-L
 | Additive sum A ⊕ B | `case_code r code1:fn1 code2:fn2` | Tagged choice eliminated by case analysis on error codes. |
 | Shift-down ↓N | `Thunk_t t; t.new fn args` | Suspend a computation as a value. |
 | Shift-up ↑P | `force r t` | Resume a suspended computation. |
+| Tensor A ⊗ B | `both r fn1 fn2` | Independent operations on same input, all must succeed. Split resources: each fn gets fresh Result_t. |
+| Additive sum A ⊕ B (success side) | `first r fn1 fn2` | Try alternatives on original input, first success wins. Dual of `case_code`. |
 | Exponential !A / ?A | `gather`/`collect` | Closest analogue, not exact. !A allows reuse of a linear resource; `gather` runs N independent copies of an operation against fresh Result_t values, accumulating into one. The accumulator Result_t plays the ?A role (absorbing context). Shell value semantics mean true linearity enforcement isn't needed — see "What We Don't Need." |
 | Positive types (values) | `Result_t`, `SafeStr_t`, `SafePath_t`, `Version_t`, `Thunk_t` | Data at rest. Inert until acted on. |
 | Negative types (computations) | `chain`, `match`, `force`, `sequence`, ... | Active transformations. Consume and produce values. |
@@ -35,16 +37,23 @@ Repository: https://github.com/aspiwack/dissect-L
 
 ```
 match (cut rule)
-  ├── chain  = match r fn -        ok-arm only
-  ├── or_else = match r - fn       err-arm only
-  └── sequence = loop of chain     multi-step ok-path
+  ├── chain     = match r fn -       ok-arm only
+  ├── or_else   = match r - fn       err-arm only
+  └── sequence  = loop of chain      multi-step ok-path
+
+Independent (own status checks):
+  ├── both      tensor: all fns on one input, all must succeed
+  ├── first     choice: try fns on one input, first success wins
+  ├── guard     predicate gating
+  ├── tap       observation (save/restore = implicit !)
+  ├── gather    accumulate (one fn, many inputs)
+  └── wrap_err  error annotation
 ```
 
 Every combinator that dispatches on ok/err status bottoms out at `match`.
-The combinators that do their own status checks are the ones that *should*:
-`guard` (predicate evaluation, not function dispatch), `tap` (observation
-without mutation), `gather` (accumulation, never short-circuits), and
-`wrap_err` (field mutation, not dispatch).
+The independent combinators do their own status checks because they *should* —
+they operate outside the single-dispatch model, running multiple functions,
+evaluating predicates, or mutating fields directly.
 
 ### Composition patterns
 
@@ -70,6 +79,45 @@ success path, or vice versa.
 `retry` resets the result to `ok` with the original input value before each
 attempt, giving the function a clean slate every time. This makes it safe
 to retry operations that set `.err` as their failure mode.
+
+`tap` is the operational equivalent of the ! (bang) modality — the
+promote/observe/discard cycle. Save state promotes the value to duplicable,
+run observer uses the copy, restore state discards it. This is why tap
+can observe without consuming: it's working on a promoted copy.
+
+### Tensor and choice
+
+`both` and `first` fill the two structural gaps identified by the System L
+correspondence.
+
+`both` is the multiplicative tensor (A ⊗ B). It splits resources so each
+function gets an independent copy of the input. All must succeed. This is
+to `sequence` as `gather` is to `chain` — accumulate vs. short-circuit.
+The typical use is running multiple validators on the same input, where you
+want all error messages, not just the first one:
+
+```ksh
+both r check_nonempty -- check_min_len 8 -- check_charset '[a-z]'
+# All three validators run; errors accumulated if any fail
+```
+
+`first` is additive disjunction on the success side (A ⊕ B). It tries
+alternatives on the original input until one succeeds. This is the
+success-side dual of `case_code`, which dispatches on error codes.
+
+```ksh
+first r parse_json parse_yaml parse_toml
+# First successful parse wins; its output value is adopted
+```
+
+Key contrasts:
+
+- `first` vs. `or_else`: `or_else` passes the *error* to the recovery
+  function. `first` passes the *original value* to each alternative.
+- `first` vs. `retry`: `retry` runs the *same* function N times. `first`
+  runs N *different* functions once each.
+- `both` vs. multiple guards via `chain`: guards short-circuit on first
+  failure. `both` runs all validators and reports everything that's wrong.
 
 ### Avoiding subshells
 
@@ -142,6 +190,25 @@ Linear logic restricts weakening (discarding unused values) and contraction
 shell variables — they can be ignored or read multiple times without
 ceremony. These structural rules are automatically satisfied by the shell's
 value semantics.
+
+### Remaining System L connectives
+
+The following connectives from Spiwack's dissection have no func.ksh
+representation, and intentionally so:
+
+- **Par (A ⅋ B)**: The multiplicative dual of tensor. Needs product types
+  (two independent result channels) that shell doesn't have. A single
+  Result_t is either ok or err, never both simultaneously.
+- **With (A & B)**: Additive conjunction — "offer both, consumer picks one."
+  Two `Thunk_t`s cover this: suspend both alternatives, force whichever
+  one you need.
+- **Zero (0) / Top (⊤) / Unit (1) / Bottom (⊥)**: The units and empties
+  of the four connective families. These are identity elements with no
+  runtime representation — the empty tensor, the trivially-true choice, etc.
+  In shell, "do nothing" is just... not calling a function.
+- **Explicit !/? (exponential modalities)**: `gather` is the operational
+  pattern. `tap` provides the promote/observe/discard cycle. Shell value
+  semantics make explicit tracking unnecessary — see `dup` above.
 
 
 ## Patterns

@@ -1,0 +1,111 @@
+# both — run all functions on the same input, all must succeed
+#
+# Unlike sequence (which short-circuits on first error), both ALWAYS
+# runs every function and accumulates failures. Each function gets a
+# fresh Result_t pre-loaded with the original value — functions are
+# independent of each other (tensor / split resources).
+#
+# On success, .value is unchanged (validator/guard semantics).
+# On failure, .error has all error messages (newline-separated)
+# and .code counts the number of failures.
+#
+# Supports per-function extra arguments via -- delimiters:
+#   both r check_len 8 50 -- check_charset '[a-z]' -- check_nonempty
+#
+# Usage:
+#   Result_t r
+#   r.ok "input"
+#   both r validator1 validator2 validator3
+
+function both {
+    if (( $# < 2 )); then
+        typeset -n _bo_err=$1
+        _bo_err.err "both: requires at least 2 arguments (got $#)" 1
+        return 0
+    fi
+
+    typeset -n _bo_r=$1
+    typeset _bo_ref=$1
+    shift
+
+    [[ ${_bo_r.status} == ok ]] || return 0
+
+    typeset _bo_input=${_bo_r.value}
+    typeset -i _bo_fails=0
+    typeset _bo_errors=''
+
+    case " $* " in
+    *' -- '*)
+        typeset -a _bo_step=()
+        while (( $# > 0 )); do
+            if [[ $1 == '--' ]]; then
+                shift
+                if (( ${#_bo_step[@]} > 0 )); then
+                    Result_t _bo_tmp
+                    _bo_tmp.ok "$_bo_input"
+                    "${_bo_step[0]}" _bo_tmp "${_bo_step[@]:1}"
+                    typeset -i _bo_ret=$?
+                    if (( _bo_ret != 0 )) && [[ ${_bo_tmp.status} == ok ]]; then
+                        _bo_tmp.err "both: ${_bo_step[0]} exited $_bo_ret without setting result" $_bo_ret
+                    fi
+                    if [[ ${_bo_tmp.status} == err ]]; then
+                        if (( _bo_fails == 0 )); then
+                            _bo_errors="${_bo_tmp.error}"
+                        else
+                            _bo_errors="${_bo_errors}"$'\n'"${_bo_tmp.error}"
+                        fi
+                        (( _bo_fails++ ))
+                    fi
+                fi
+                _bo_step=()
+            else
+                _bo_step+=("$1")
+                shift
+            fi
+        done
+        if (( ${#_bo_step[@]} > 0 )); then
+            Result_t _bo_tmp
+            _bo_tmp.ok "$_bo_input"
+            "${_bo_step[0]}" _bo_tmp "${_bo_step[@]:1}"
+            typeset -i _bo_ret=$?
+            if (( _bo_ret != 0 )) && [[ ${_bo_tmp.status} == ok ]]; then
+                _bo_tmp.err "both: ${_bo_step[0]} exited $_bo_ret without setting result" $_bo_ret
+            fi
+            if [[ ${_bo_tmp.status} == err ]]; then
+                if (( _bo_fails == 0 )); then
+                    _bo_errors="${_bo_tmp.error}"
+                else
+                    _bo_errors="${_bo_errors}"$'\n'"${_bo_tmp.error}"
+                fi
+                (( _bo_fails++ ))
+            fi
+        fi
+        ;;
+    *)
+        typeset _bo_fn
+        for _bo_fn; do
+            Result_t _bo_tmp
+            _bo_tmp.ok "$_bo_input"
+            "$_bo_fn" _bo_tmp
+            typeset -i _bo_ret=$?
+            if (( _bo_ret != 0 )) && [[ ${_bo_tmp.status} == ok ]]; then
+                _bo_tmp.err "both: $_bo_fn exited $_bo_ret without setting result" $_bo_ret
+            fi
+            if [[ ${_bo_tmp.status} == err ]]; then
+                if (( _bo_fails == 0 )); then
+                    _bo_errors="${_bo_tmp.error}"
+                else
+                    _bo_errors="${_bo_errors}"$'\n'"${_bo_tmp.error}"
+                fi
+                (( _bo_fails++ ))
+            fi
+        done
+        ;;
+    esac
+
+    if (( _bo_fails > 0 )); then
+        _bo_r.err "$_bo_errors" $_bo_fails
+    fi
+
+    return 0
+}
