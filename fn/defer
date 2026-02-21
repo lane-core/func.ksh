@@ -48,6 +48,10 @@ function defer {
         kill -0 ${_df.pid} 2>/dev/null && return 0
     fi
 
+    # Ensure async directory exists (another session's EXIT trap or
+    # /tmp cleanup may have removed it while this shell is still live)
+    [[ -d $_FUNC_KSH_ASYNC_DIR ]] || mkdir -m 0700 -p "$_FUNC_KSH_ASYNC_DIR" 2>/dev/null
+
     # Allocate channel (file-backed, acts as the session endpoint)
     typeset channel
     if [[ -n $key ]]; then
@@ -67,32 +71,35 @@ function defer {
     #   Line 2+: value or error message
     # Stderr is captured separately in $channel.err for debugging.
     #
-    # Suppress job control for internal background processes:
-    #   1. set +m — disable monitor mode so & doesn't print "[N] PID"
-    #      and the job isn't added to the table (prevents "[N] Done"
-    #      notifications and inflated jobs -p counts in the prompt)
-    #   2. disown — belt-and-suspenders removal from the job table,
-    #      in case set +m is insufficient in discipline function context
+    # Suppress job control for internal background processes.
+    # Three layers of defense:
+    #   1. set +m — disable monitor mode so the job isn't tracked
+    #   2. { ... } 2>/dev/null — redirect stderr around the & spawn
+    #      so ksh's [N] PID notification is discarded (ksh93u+m
+    #      prints these to fd 2; set +m alone doesn't suppress them
+    #      when called from a discipline function context)
+    #   3. disown — remove from job table to prevent [N] Done messages
     #
-    # After disown, wait(1) cannot reap the process. poll/await use
+    # After disown, wait(1) cannot find the PID. poll/await use
     # kill -0 to detect completion instead.
     [[ -o monitor ]] && typeset -i _df_was_monitor=1 || typeset -i _df_was_monitor=0
     set +m
-    (
-        Result_t _defer_r
-        "$fn" _defer_r "$@"
+    {
+        (
+            Result_t _defer_r
+            "$fn" _defer_r "$@"
 
-        if _defer_r.is_ok; then
-            print -r -- "ok"
-            print -rn -- "${_defer_r.value}"
-        else
-            print -r -- "err ${_defer_r.code}"
-            print -rn -- "${_defer_r.error}"
-        fi
-    ) >|"$channel" 2>|"$channel.err" &
-
-    _df.pid=$!
-    disown $! 2>/dev/null
+            if _defer_r.is_ok; then
+                print -r -- "ok"
+                print -rn -- "${_defer_r.value}"
+            else
+                print -r -- "err ${_defer_r.code}"
+                print -rn -- "${_defer_r.error}"
+            fi
+        ) >|"$channel" 2>|"$channel.err" &
+        _df.pid=$!
+        disown $! 2>/dev/null
+    } 2>/dev/null
 
     _df.channel=$channel
     _df.key=${key:-$fn}
