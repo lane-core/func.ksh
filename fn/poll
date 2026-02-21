@@ -1,0 +1,45 @@
+# poll — non-blocking check on a Future_t (partial shift-up ↑P)
+#
+# Tests whether a background computation has completed without
+# blocking. Returns 0 if the future is done (resolved or failed),
+# 1 if still pending or empty.
+#
+# This is a "peek" at the session endpoint — checking whether the
+# background has sent its !Result_t without consuming it. The actual
+# consumption (linear use) happens via `await`.
+#
+# Usage:
+#   Future_t f
+#   defer f expensive_fn
+#   # ... do other work ...
+#   if poll f; then
+#       await r f    # guaranteed not to block
+#   fi
+
+function poll {
+    typeset -n _pl=$1
+
+    # Already resolved or failed — immediate answer
+    if _pl.is_resolved || _pl.is_failed; then
+        return 0
+    fi
+
+    # Empty or no PID — nothing to poll
+    if [[ ${_pl.status} == empty ]] || (( _pl.pid <= 0 )); then
+        return 1
+    fi
+
+    # Check if background process is still running
+    if kill -0 ${_pl.pid} 2>/dev/null; then
+        return 1
+    fi
+
+    # Process finished — mark based on channel state
+    if [[ -s ${_pl.channel} ]]; then
+        _pl.status=resolved
+    else
+        _pl.status=failed
+    fi
+
+    return 0
+}

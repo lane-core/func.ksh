@@ -1,0 +1,79 @@
+# await — blocking wait on a Future_t (shift-up ↑P, consuming)
+#
+# Blocks until the background computation completes, then reads
+# the result from the channel into a Result_t. The channel file
+# is removed after reading — this enforces linearity (the future
+# is consumed exactly once).
+#
+# Session type dual: ?Result_t.end
+#   The parent receives one Result_t from the channel, session ends.
+#
+# To make a result reusable (!A exponential), cache the Result_t
+# after awaiting, or use `memo` on the computation instead of defer.
+#
+# Reading uses file descriptors (no $() subshell) to preserve
+# trailing newlines in values and avoid unnecessary forks.
+#
+# Usage:
+#   Future_t f
+#   defer f compute_thing arg1
+#   await r f    # blocks until done, r holds the result
+#
+# After await, the Future_t is reset to empty state (consumed).
+# Calling await again on a consumed future is an error.
+
+function await {
+    typeset -n _aw_r=$1 _aw_f=$2
+
+    # Already consumed — linearity violation
+    if [[ ${_aw_f.status} == empty ]]; then
+        _aw_r.err "await: future is empty (already consumed or never deferred)" 1
+        return 0
+    fi
+
+    # Wait for background process to finish.
+    # This works because we do NOT disown the background job in defer.
+    # wait(1) properly blocks until the process exits and reaps it,
+    # which also prevents "[N] + Done" job notifications.
+    if (( _aw_f.pid > 0 )); then
+        wait ${_aw_f.pid} 2>/dev/null || true
+    fi
+
+    # Read result from channel using file descriptors (no subshell fork,
+    # preserves trailing newlines that $() would strip).
+    if [[ -s ${_aw_f.channel} ]]; then
+        typeset header='' body=''
+        typeset -i _aw_fd
+
+        exec {_aw_fd}< "${_aw_f.channel}"
+
+        # Line 1: protocol header ("ok" or "err CODE")
+        IFS= read -r header <&${_aw_fd}
+
+        # Rest: value or error message (read until EOF)
+        IFS= read -rd '' body <&${_aw_fd} || true
+
+        exec {_aw_fd}<&-
+
+        case $header in
+            ok)
+                _aw_r.ok "$body"
+                ;;
+            err\ *)
+                typeset -i code=${header#err }
+                _aw_r.err "$body" "$code"
+                ;;
+            *)
+                _aw_r.err "await: corrupt channel data: ${header}" 1
+                ;;
+        esac
+    else
+        _aw_r.err "await: channel empty or missing (process may have been killed)" 1
+    fi
+
+    # Consume: remove channel + sidecar files, reset future (linearity)
+    rm -f "${_aw_f.channel}" "${_aw_f.channel}.err" 2>/dev/null
+    _aw_f.reset
+
+    return 0
+}

@@ -1,0 +1,92 @@
+# defer — fork a computation to background (async shift-down ↓N)
+#
+# Creates a Future_t by spawning the given function in a background
+# subshell. The function receives a fresh Result_t, does its work,
+# and the result is serialized to the future's channel (file).
+#
+# This is the asynchronous counterpart to Thunk_t.new:
+#   Thunk_t.new  →  stores computation, defers execution (sync ↓N)
+#   defer        →  stores computation AND starts execution (async ↓N)
+#
+# Session type of the spawned process: !Result_t.end
+#   The background sends one Result_t through the channel, then exits.
+#
+# Usage:
+#   Future_t f
+#   defer f my_function arg1 arg2
+#
+# The called function has the same signature as chain/match targets:
+#   function my_function {
+#       typeset -n _r=$1; shift
+#       _r.ok "computed value"
+#   }
+#
+# If a future with the same key is already pending, defer is a no-op.
+# The key implies semantic identity — same key = same computation.
+# Pass an explicit key via the -k flag to enable dedup:
+#   defer -k "git_status" f my_function
+#
+# Note: stderr from the deferred function is captured in a sidecar
+# file ($channel.err) for debugging. It is not surfaced automatically.
+
+function defer {
+    typeset key=''
+
+    # Parse optional -k flag for dedup key
+    if [[ ${1:-} == -k ]]; then
+        key=$2
+        shift 2
+    fi
+
+    typeset -n _df=$1
+    typeset fn=$2
+    shift 2
+
+    # Dedup: if a future with this key is already pending, skip.
+    # Guard pid > 0 to avoid kill -0 0 (signals the process group).
+    if [[ -n $key && ${_df.key} == "$key" ]] && _df.is_pending && (( _df.pid > 0 )); then
+        kill -0 ${_df.pid} 2>/dev/null && return 0
+    fi
+
+    # Allocate channel (file-backed, acts as the session endpoint)
+    typeset channel
+    if [[ -n $key ]]; then
+        channel="${_FUNC_KSH_ASYNC_DIR}/${key}"
+        # Evict stale data from crashed previous run
+        rm -f "$channel" "$channel.err" 2>/dev/null
+    else
+        channel=$(mktemp "${_FUNC_KSH_ASYNC_DIR}/defer.XXXXXXXXXX") || {
+            print -u2 "defer: mktemp failed"
+            return 1
+        }
+    fi
+
+    # Spawn background subshell
+    # Protocol: serialize Result_t to channel file
+    #   Line 1: "ok" or "err CODE"
+    #   Line 2+: value or error message
+    # Stderr is captured separately in $channel.err for debugging.
+    (
+        Result_t _defer_r
+        "$fn" _defer_r "$@"
+
+        if _defer_r.is_ok; then
+            print -r -- "ok"
+            print -rn -- "${_defer_r.value}"
+        else
+            print -r -- "err ${_defer_r.code}"
+            print -rn -- "${_defer_r.error}"
+        fi
+    ) >|"$channel" 2>|"$channel.err" &
+
+    _df.pid=$!
+    _df.channel=$channel
+    _df.key=${key:-$fn}
+    _df.status=pending
+
+    # No disown: we need `wait` to work correctly in `await`.
+    # Job notifications are suppressed by awaiting before the shell
+    # checks for completed jobs (e.g., from a PS1 discipline function).
+
+    return 0
+}

@@ -34,12 +34,22 @@ function _func_ksh_cleanup {
     if [[ -n ${_FUNC_KSH_ERRTMP:-} ]]; then
         rm -f "$_FUNC_KSH_ERRTMP"
     fi
+    # Clean up async channel files
+    if [[ -d ${_FUNC_KSH_ASYNC_DIR:-} ]]; then
+        rm -rf "$_FUNC_KSH_ASYNC_DIR" 2>/dev/null
+    fi
     return 0
 }
 trap '_func_ksh_cleanup' EXIT
 
 # Global state for memo combinator (associative array cache)
 typeset -A _FUNC_KSH_MEMO
+
+# Async channel directory (Future_t result files live here)
+_FUNC_KSH_ASYNC_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/func_ksh_${UID:-$(id -u)}"
+if [[ ! -d $_FUNC_KSH_ASYNC_DIR ]]; then
+    mkdir -m 0700 -p "$_FUNC_KSH_ASYNC_DIR" 2>/dev/null
+fi
 
 # Source type definitions (order matters — no deps first)
 for _f in "${_FUNC_KSH_ROOT}"/types/*.ksh; do
