@@ -13,10 +13,7 @@
 #   p.err "broken" "clone failed"
 #   p.end
 
-# ksh93's typeset -T parser does lexical bracket-matching across the
-# entire compound body. Unmatched [ inside strings (even single-quoted
-# printf formats) confuse it. We pre-compute the ANSI clear-to-EOL
-# sequence here so the type body stays bracket-balanced.
+# ANSI: CR + clear-to-end-of-line — shared by all Progress_t methods.
 typeset _PROGRESS_CLR=$'\r\033[K'
 
 typeset -T Progress_t=(
