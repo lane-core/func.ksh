@@ -13,6 +13,12 @@
 #   p.err "broken" "clone failed"
 #   p.end
 
+# ksh93's typeset -T parser does lexical bracket-matching across the
+# entire compound body. Unmatched [ inside strings (even single-quoted
+# printf formats) confuse it. We pre-compute the ANSI clear-to-EOL
+# sequence here so the type body stays bracket-balanced.
+typeset _PROGRESS_CLR=$'\r\033[K'
+
 typeset -T Progress_t=(
     typeset -i total=0 done=0 fail=0 active=0
     typeset verb=''           # past tense for completed: "installed", "updated", "frozen"
@@ -50,7 +56,7 @@ typeset -T Progress_t=(
         # $1=name  $2=detail (optional, e.g. short sha)
         (( _.done++ ))
         typeset name="$1" detail="${2:-}"
-        [[ ${_.tty} == true ]] && printf '\r\033[K' >&2
+        [[ ${_.tty} == true ]] && printf '%s' "$_PROGRESS_CLR" >&2
         print -u2 -r -- "  ✓ ${name}${detail:+ (${detail})}"
         _.render
     }
@@ -59,29 +65,29 @@ typeset -T Progress_t=(
         # $1=name  $2=detail (optional)
         (( _.fail++ ))
         typeset name="$1" detail="${2:-}"
-        [[ ${_.tty} == true ]] && printf '\r\033[K' >&2
+        [[ ${_.tty} == true ]] && printf '%s' "$_PROGRESS_CLR" >&2
         print -u2 -r -- "  ✗ ${name}${detail:+ (${detail})}"
         _.render
     }
 
     function skip {
         # $1=name  $2=reason (optional) — informational, not counted
-        [[ ${_.tty} == true ]] && printf '\r\033[K' >&2
+        [[ ${_.tty} == true ]] && printf '%s' "$_PROGRESS_CLR" >&2
         print -u2 -r -- "  - ${1}${2:+ (${2})}"
         _.render
     }
 
     function render {
         [[ ${_.tty} != true ]] && return
-        typeset c=$(( _.done + _.fail ))
-        typeset line="[${c}/${_.total} ${_.verb}"
-        (( _.active > 0 )) && line+=", ${_.active} ${_.active_verb}"
-        line+="]"
+        typeset -i c=$(( _.done + _.fail ))
+        typeset body="${c}/${_.total} ${_.verb}"
+        (( _.active > 0 )) && body+=", ${_.active} ${_.active_verb}"
+        typeset line="[${body}]"
         [[ -n "${_.current}" ]] && line+=" ${_.current} ..."
-        printf '\r\033[K%s' "$line" >&2
+        printf '%s%s' "$_PROGRESS_CLR" "$line" >&2
     }
 
     function end {
-        [[ ${_.tty} == true ]] && printf '\r\033[K' >&2
+        [[ ${_.tty} == true ]] && printf '%s' "$_PROGRESS_CLR" >&2
     }
 )
