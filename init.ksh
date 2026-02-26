@@ -46,6 +46,13 @@ trap '_func_ksh_cleanup' EXIT
 # Global state for memo combinator (associative array cache)
 typeset -A _FUNC_KSH_MEMO
 
+# Async working directory for defer/poll/await channels
+_FUNC_KSH_ASYNC_DIR="${TMPDIR:-/tmp}/func.ksh.${UID:-$(id -u)}.$$"
+function _func_ksh_async_cleanup {
+    [[ -d "${_FUNC_KSH_ASYNC_DIR:-}" ]] && rm -rf "$_FUNC_KSH_ASYNC_DIR"
+}
+_func_ksh_register_cleanup _func_ksh_async_cleanup
+
 # Source type definitions (order matters — no deps first)
 for _f in "${_FUNC_KSH_ROOT}"/types/*.ksh; do
     [[ -f $_f ]] && . "$_f"
