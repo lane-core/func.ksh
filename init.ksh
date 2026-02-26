@@ -48,6 +48,7 @@ typeset -A _FUNC_KSH_MEMO
 
 # Async working directory for defer/poll/await channels
 _FUNC_KSH_ASYNC_DIR="${TMPDIR:-/tmp}/func.ksh.${UID:-$(id -u)}.$$"
+mkdir -m 0700 -p "$_FUNC_KSH_ASYNC_DIR" 2>/dev/null
 function _func_ksh_async_cleanup {
     [[ -d "${_FUNC_KSH_ASYNC_DIR:-}" ]] && rm -rf "$_FUNC_KSH_ASYNC_DIR"
 }
