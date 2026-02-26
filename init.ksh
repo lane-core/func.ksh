@@ -26,30 +26,25 @@ function _func_ksh_err_handler {
         print -u2 "func.ksh: error at ${1}:${2} (exit ${3})"
     return 0
 }
-trap '_func_ksh_err_handler "${.sh.file}" "${LINENO}" "$?"' ERR
+trap '_func_ksh_err_handler "${.sh.file:-}" "${LINENO}" "$?"' ERR
 
-# Cleanup temp files on exit (explicit return 0 avoids
-# triggering ERR trap when the variable is unset)
+# Cleanup registration — libraries plug in without fighting over EXIT trap
+typeset -a _FUNC_KSH_CLEANUPS
+function _func_ksh_register_cleanup {
+    _FUNC_KSH_CLEANUPS+=("$1")
+}
 function _func_ksh_cleanup {
-    if [[ -n ${_FUNC_KSH_ERRTMP:-} ]]; then
-        rm -f "$_FUNC_KSH_ERRTMP"
-    fi
-    # Clean up async channel files
-    if [[ -d ${_FUNC_KSH_ASYNC_DIR:-} ]]; then
-        rm -rf "$_FUNC_KSH_ASYNC_DIR" 2>/dev/null
-    fi
+    [[ -n ${_FUNC_KSH_ERRTMP:-} ]] && rm -f "$_FUNC_KSH_ERRTMP"
+    typeset _fn
+    for _fn in "${_FUNC_KSH_CLEANUPS[@]}"; do
+        "$_fn" 2>/dev/null
+    done
     return 0
 }
 trap '_func_ksh_cleanup' EXIT
 
 # Global state for memo combinator (associative array cache)
 typeset -A _FUNC_KSH_MEMO
-
-# Async channel directory (Future_t result files live here)
-_FUNC_KSH_ASYNC_DIR="${XDG_RUNTIME_DIR:-${TMPDIR:-/tmp}}/func_ksh_${UID:-$(id -u)}"
-if [[ ! -d $_FUNC_KSH_ASYNC_DIR ]]; then
-    mkdir -m 0700 -p "$_FUNC_KSH_ASYNC_DIR" 2>/dev/null
-fi
 
 # Source type definitions (order matters — no deps first)
 for _f in "${_FUNC_KSH_ROOT}"/types/*.ksh; do
@@ -60,33 +55,6 @@ unset _f
 # Register autoloaded functions
 FPATH="${_FUNC_KSH_ROOT}/fn${FPATH:+:${FPATH}}"
 for _f in "${_FUNC_KSH_ROOT}"/fn/*; do
-    [[ -f $_f ]] && autoload "${_f##*/}"
-done
-unset _f
-
-# Parser combinator constants
-typeset -ri P_ERR_EOF=10
-typeset -ri P_ERR_UNEXP=20
-typeset -ri P_ERR_EXPECT=30
-typeset -ri P_ERR_LABEL=40
-
-# Parser internal helpers
-function _p_skip_spaces {
-    typeset -n _s=$1
-    while (( _s.pos < _s.len )) && [[ ${_s.input:_s.pos:1} == [[:space:]] ]]; do
-        (( _s.pos++ ))
-    done
-}
-function _p_is_digit { [[ $1 == [0-9] ]]; }
-function _p_is_alpha { [[ $1 == [a-zA-Z] ]]; }
-function _p_is_alnum { [[ $1 == [a-zA-Z0-9] ]]; }
-function _p_is_lower { [[ $1 == [a-z] ]]; }
-function _p_is_upper { [[ $1 == [A-Z] ]]; }
-function _p_is_space { [[ $1 == [[:space:]] ]]; }
-
-# Register parser autoloaded functions
-FPATH="${_FUNC_KSH_ROOT}/fn/parse${FPATH:+:${FPATH}}"
-for _f in "${_FUNC_KSH_ROOT}"/fn/parse/*; do
     [[ -f $_f ]] && autoload "${_f##*/}"
 done
 unset _f
