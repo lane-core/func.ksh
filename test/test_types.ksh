@@ -71,48 +71,6 @@ p_root.value="/"
 assert_eq "safepath dirname root" "$(p_root.dirname)" "/"
 assert_eq "safepath basename root" "$(p_root.basename)" "/"
 
-# ---- Version_t ----
-Version_t v1
-v1.raw="1.2.3"
-assert_eq "version parses major" "${v1.major}" "1"
-assert_eq "version parses minor" "${v1.minor}" "2"
-assert_eq "version parses patch" "${v1.patch}" "3"
-assert_eq "version display" "${v1}" "1.2.3"
-
-Version_t v2
-v2.raw="2.0.0-alpha"
-assert_eq "version pre-release" "${v2.pre}" "alpha"
-assert_eq "version display pre" "${v2}" "2.0.0-alpha"
-
-# Two-component version
-Version_t v3
-v3.raw="1.0"
-assert_eq "version two-component" "${v3.major}" "1"
-assert_eq "version two-comp patch" "${v3.patch}" "0"
-
-# Reject bad versions
-Version_t v4
-v4.raw="1.0.0"
-v4.raw="not.a.version" 2>/dev/null
-assert_eq "version rejects bad" "${v4.raw}" "1.0.0"
-
-# Comparison
-Version_t va vb
-va.raw="1.2.3"
-vb.raw="1.2.4"
-assert_eq "version cmp less" "$(va.cmp vb)" "-1"
-
-vb.raw="1.2.3"
-assert_eq "version cmp equal" "$(va.cmp vb)" "0"
-
-vb.raw="1.2.2"
-assert_eq "version cmp greater" "$(va.cmp vb)" "1"
-
-# Pre-release sorts before release
-va.raw="1.0.0-alpha"
-vb.raw="1.0.0"
-assert_eq "version pre < release" "$(va.cmp vb)" "-1"
-
 # ---- SafeStr_t: $[ rejected ----
 SafeStr_t s5
 s5.value='ok'
@@ -129,28 +87,6 @@ SafePath_t p8
 p8.value="/safe"
 p8.value="foo/./../../etc" 2>/dev/null
 assert_eq "safepath rejects embedded dotdot" "${p8.value}" "/safe"
-
-# ---- Version_t: semver pre-release ordering ----
-# Numeric identifiers sort numerically (1 < 2 < 10)
-Version_t vc vd
-vc.raw="1.0.0-alpha.1"
-vd.raw="1.0.0-alpha.10"
-assert_eq "version pre numeric sort" "$(vc.cmp vd)" "-1"
-
-# Numeric < alphanumeric per semver
-vc.raw="1.0.0-1"
-vd.raw="1.0.0-alpha"
-assert_eq "version numeric < alpha" "$(vc.cmp vd)" "-1"
-
-# Shorter pre-release < longer when common prefix is equal
-vc.raw="1.0.0-alpha"
-vd.raw="1.0.0-alpha.1"
-assert_eq "version shorter pre < longer" "$(vc.cmp vd)" "-1"
-
-# Equal pre-releases
-vc.raw="1.0.0-rc.1"
-vd.raw="1.0.0-rc.1"
-assert_eq "version pre equal" "$(vc.cmp vd)" "0"
 
 # ---- SafeStr_t: carriage return rejected ----
 SafeStr_t s6

@@ -1,7 +1,0 @@
-# p_spaces — skip whitespace
-
-function p_spaces {
-    typeset -n _r=$1
-    _p_skip_spaces "$2"
-    _r.ok ""
-}

@@ -205,61 +205,6 @@ retry re6 3 _check_reset
 assert_eq "retry reset result" "${re6.value}" "done"
 
 # ====================================================================
-# Version_t predicates: lt, gt, eq
-# ====================================================================
-
-Version_t va vb
-
-va.raw="1.2.3"
-vb.raw="1.2.4"
-assert_true "vt lt: major.minor differ" va.lt vb
-va.gt vb && typeset _vt_gt1=yes || typeset _vt_gt1=no
-assert_eq "vt gt: 1.2.3 not > 1.2.4" "$_vt_gt1" "no"
-
-va.raw="2.0.0"
-vb.raw="1.9.9"
-assert_true "vt gt: major greater" va.gt vb
-va.lt vb && typeset _vt_lt1=yes || typeset _vt_lt1=no
-assert_eq "vt lt: 2.0.0 not < 1.9.9" "$_vt_lt1" "no"
-
-va.raw="1.2.3"
-vb.raw="1.2.3"
-assert_true "vt eq: same version" va.eq vb
-va.lt vb && typeset _vt_lt2=yes || typeset _vt_lt2=no
-assert_eq "vt lt: equal not lt" "$_vt_lt2" "no"
-va.gt vb && typeset _vt_gt2=yes || typeset _vt_gt2=no
-assert_eq "vt gt: equal not gt" "$_vt_gt2" "no"
-
-# Pre-release sorts before release
-va.raw="1.0.0-alpha"
-vb.raw="1.0.0"
-assert_true "vt lt: pre < release" va.lt vb
-va.gt vb && typeset _vt_gt3=yes || typeset _vt_gt3=no
-assert_eq "vt gt: pre not > release" "$_vt_gt3" "no"
-
-# Release sorts after pre-release
-va.raw="1.0.0"
-vb.raw="1.0.0-beta"
-assert_true "vt gt: release > pre" va.gt vb
-
-# Pre-release equality
-va.raw="1.0.0-rc.1"
-vb.raw="1.0.0-rc.1"
-assert_true "vt eq: same pre-release" va.eq vb
-
-# Different pre-releases not equal
-va.raw="1.0.0-alpha"
-vb.raw="1.0.0-beta"
-va.eq vb && typeset _vt_eq1=yes || typeset _vt_eq1=no
-assert_eq "vt eq: diff pre not equal" "$_vt_eq1" "no"
-assert_true "vt lt: alpha < beta" va.lt vb
-
-# Minor version comparison
-va.raw="1.3.0"
-vb.raw="1.2.9"
-assert_true "vt gt: minor greater" va.gt vb
-
-# ====================================================================
 # sequence optimization — verify glob path still works
 # ====================================================================
 

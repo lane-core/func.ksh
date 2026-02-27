@@ -26,7 +26,7 @@ Repository: https://github.com/aspiwack/dissect-L
 | Tensor A ⊗ B | `both r fn1 fn2` | Independent operations on same input, all must succeed. Split resources: each fn gets fresh Result_t. |
 | Additive sum A ⊕ B (success side) | `first r fn1 fn2` | Try alternatives on original input, first success wins. Dual of `case_code`. |
 | Exponential !A / ?A | `tap` (structural), `gather`/`collect` (operational) | `tap` is the structural match: save/run/restore is the promote/observe/discard cycle of !A. `gather`/`collect` are the operational pattern: run N independent copies against fresh Result_t values, accumulating into one (the accumulator plays the ?A role). Shell value semantics mean true linearity enforcement isn't needed — see "What We Don't Need." |
-| Positive types (values) | `Result_t`, `SafeStr_t`, `SafePath_t`, `Version_t`, `Thunk_t` | Data at rest. Inert until acted on. |
+| Positive types (values) | `Result_t`, `SafeStr_t`, `SafePath_t`, `Thunk_t` | Data at rest. Inert until acted on. |
 | Negative types (computations) | `chain`, `match`, `force`, `sequence`, ... | Active transformations. Consume and produce values. |
 | Commutative cuts | Pipeline fusion guidance | "Don't wrap a value only for the next step to unwrap it." |
 
@@ -48,11 +48,6 @@ Independent (own status checks):
   ├── tap       observation (save/restore = implicit !)
   ├── gather    accumulate (one fn, many inputs)
   └── wrap_err  error annotation
-
-Async (shift-down/up across fork boundary):
-  ├── defer     spawn background computation → Future_t
-  ├── poll      non-blocking completion check
-  └── await     blocking wait, consumes Future_t → Result_t
 ```
 
 Every combinator that dispatches on ok/err status bottoms out at `match`.
@@ -124,49 +119,6 @@ Key contrasts:
 - `both` vs. multiple guards via `chain`: guards short-circuit on first
   failure. `both` runs all validators and reports everything that's wrong.
 
-### Async: defer / await / poll
-
-`Thunk_t`/`force` implement synchronous shift-down/up — suspend a computation
-as a value, resume it later, all within the current shell. `defer`/`await`
-extend this across a fork boundary: the computation runs in a background
-subshell and communicates its result through a file-backed channel.
-
-The session type protocol is minimal:
-- **Background** (`defer`): `!Result_t.end` — sends one Result_t, exits.
-- **Parent** (`await`): `?Result_t.end` — receives one Result_t, session ends.
-
-The channel file encodes the result as two parts: a header line (`ok` or
-`err CODE`) and the body (value or error message). `await` reads this via
-file descriptors (no `$()` subshell) to preserve trailing newlines.
-
-**Linearity enforcement.** `await` consumes the future — it reads the channel,
-removes the file, and resets the `Future_t` to empty state. Calling `await`
-twice on the same future is an error. To make a result reusable (the `!A`
-exponential), cache the `Result_t` after awaiting, or use `memo` on the
-computation instead of `defer`.
-
-**Relationship to Thunk_t/force.** Both pairs are shift-down/up:
-
-| | Shift-down (suspend) | Shift-up (resume) | Execution |
-|---|---|---|---|
-| `Thunk_t`/`force` | `t.new fn args` | `force r t` | Synchronous, in-process |
-| `Future_t`/`defer`+`await` | `defer f fn args` | `await r f` | Asynchronous, cross-fork |
-
-`poll` is a non-blocking probe — it checks whether the background process has
-exited (`kill -0`) and updates the `Future_t` status without consuming it.
-`poll` followed by `await` is guaranteed not to block.
-
-**Dedup mechanism.** The `-k` flag on `defer` assigns a semantic key to the
-future. If a future with the same key is already pending, `defer` is a no-op.
-This prevents redundant spawns when the same computation is requested multiple
-times (e.g., polling git status from multiple hooks). Without `-k`, each
-`defer` call spawns unconditionally.
-
-**Nameref limitation.** Compound type namerefs (`Result_t`) don't survive fork
-boundaries — a subshell gets a copy, not a reference. This is why `defer`
-serializes the result to a file rather than passing it through a nameref. The
-same limitation applies to `gather`'s inability to parallelize with `&`.
-
 ### Avoiding subshells
 
 Several `Result_t` methods exist in pairs — one that prints (for use in
@@ -191,8 +143,8 @@ types (computations, things that consume input). func.ksh already has this
 distinction:
 
 - **`types/`** — positive. `Result_t`, `SafeStr_t`, `SafePath_t`,
-  `Version_t`, `Thunk_t`. These are inert structures. They hold data and
-  validate it, but they don't dispatch or transform on their own.
+  `Thunk_t`. These are inert structures. They hold data and validate it,
+  but they don't dispatch or transform on their own.
 
 - **`fn/`** — negative. `chain`, `match`, `force`, `guard`, `sequence`,
   `gather`, `collect`, `memo`, etc. These are active: they consume a
@@ -392,69 +344,15 @@ Other method names (`ok`, `err`, `new`, `make`, `init`, etc.) do not
 trigger this. `Thunk_t` uses `.new` instead of `.create` for this reason.
 
 
-## Parser Combinators
+## Related Libraries
 
-func.ksh includes a monadic parser combinator library based on Hutton &
-Meijer's "Monadic Parser Combinators" (1996, Technical Report
-NOTTCS-TR-96-4, University of Nottingham). The parsers live in `fn/parse/`
-and are autoloaded alongside the core `fn/` combinators.
+The following were originally part of func.ksh and have been split into
+focused libraries:
 
-### Calling convention
-
-Every parser takes a Result_t variable name as `$1` and a parse state
-compound variable name as `$2`:
-
-```ksh
-Result_t r
-typeset -C ps
-parse_init ps "hello world"
-p_string r ps "hello"
-```
-
-Parse state is a compound variable with `.input`, `.pos`, and `.len` fields,
-initialized by `parse_init`. Parsers advance `.pos` on success and leave it
-unchanged (or restore it) on failure.
-
-After parsing, the Result_t feeds directly into func.ksh combinators:
-
-```ksh
-p_integer r ps
-chain r validate_range 1 100
-or_else r use_default_port
-wrap_err r "config parse"
-```
-
-Error codes (`P_ERR_EOF`, `P_ERR_UNEXP`, `P_ERR_EXPECT`, `P_ERR_LABEL`)
-enable `case_code` dispatch on failure type:
-
-```ksh
-p_integer r ps
-case_code r $P_ERR_EOF:handle_eof $P_ERR_EXPECT:handle_bad_input
-```
-
-### Scope constraint
-
-Result_t variables passed to parsers MUST be declared at file scope, not
-inside a function. ksh93u+m compound-type namerefs resolve discipline
-functions (`.ok`, `.err`) through the full scope chain for global variables,
-but only 1 level deep for function-local variables. Since combinators like
-`p_natural`, `p_integer`, and `p_token` add scope levels before calling
-leaf parsers (`p_many1` -> `p_digit`), a function-local Result_t will
-silently fail. Parse state (`typeset -C`) is not affected — only Result_t.
-See "Compound type namerefs" above for details.
-
-### Combinator pass-through
-
-Combinators pass the caller's Result_t name through to sub-parsers rather
-than creating local Result_t intermediaries. This avoids the compound-type
-nameref depth limit: the sub-parser's nameref resolves to the (file-scope)
-Result_t regardless of call depth. The combinator reads status/value via
-its own 1-level nameref after each sub-parser returns.
-
-### Character parsers are inlined
-
-`p_digit`, `p_alpha`, `p_alnum`, `p_lower`, `p_upper`, and `p_space` are
-inlined rather than delegating to `p_sat`. A thin wrapper like
-`function p_digit { p_sat "$1" "$2" _p_is_digit; }` would add an extra
-scope level that breaks when called from inside a combinator due to the
-nameref depth limit described above.
+- **async.ksh** — `Future_t`, `defer`, `await`, `poll`. Async shift-down/up
+  across fork boundaries. Depends on func.ksh for Result_t.
+- **parse.ksh** — Monadic parser combinators based on Hutton & Meijer (1996).
+  40 parsers (`p_*`), error codes (`P_ERR_*`). Depends on func.ksh for
+  Result_t and core combinators.
+- **pack.ksh** — Absorbed `Version_t` (semver comparison) and `toposort`
+  (Kahn's algorithm) as package-manager domain logic.

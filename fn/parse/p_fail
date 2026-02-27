@@ -1,8 +1,0 @@
-# p_fail — always fail
-
-function p_fail {
-    typeset -n _r=$1 _s=$2
-    typeset -i _pos=${_s.pos}
-    shift 2
-    _r.err "${1:-parse error}" "${2:-1}" "$_pos"
-}
