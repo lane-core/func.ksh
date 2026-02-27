@@ -5,10 +5,10 @@
 # Guard against double-sourcing
 [[ -n ${_FUNC_KSH_INIT:-} ]] && return 0
 
-# Require ksh93u+m
+# Require ksh93u+m or ksh26
 case ${.sh.version} in
-    *93u+m*) ;;
-    *) print -u2 "func.ksh: requires ksh93u+m (found: ${.sh.version})"
+    *93u+m*|*ksh26*) ;;
+    *) print -u2 "func.ksh: requires ksh93u+m or ksh26 (found: ${.sh.version})"
        return 1 ;;
 esac
 
